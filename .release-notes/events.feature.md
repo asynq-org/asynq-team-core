@@ -1,0 +1,1 @@
+- Added core event records with deterministic hash calculation for audit chains.
