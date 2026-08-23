@@ -1,0 +1,1 @@
+- Added a safe Markdown artifact writer for task brief files.
