@@ -54,6 +54,28 @@ MIGRATIONS = (
         );
         """,
     ),
+    Migration(
+        version=3,
+        name="create_tasks",
+        sql="""
+        create table if not exists tasks (
+            id text primary key,
+            title text not null,
+            status text not null,
+            priority text not null,
+            assignee_id text,
+            brief_artifact_path text,
+            created_at text not null,
+            updated_at text not null
+        );
+
+        create index if not exists idx_tasks_status
+            on tasks (status, updated_at);
+
+        create index if not exists idx_tasks_assignee
+            on tasks (assignee_id, status);
+        """,
+    ),
 )
 
 

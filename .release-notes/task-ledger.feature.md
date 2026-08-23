@@ -1,0 +1,1 @@
+- Added the initial SQLite task ledger with task creation, lookup, listing, and audit events.
