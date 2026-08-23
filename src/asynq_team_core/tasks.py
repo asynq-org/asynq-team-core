@@ -51,13 +51,14 @@ def create_task(
     priority: str = "normal",
     assignee_id: Optional[str] = None,
     brief_artifact_path: Optional[str] = None,
+    task_id: Optional[str] = None,
     clock: Clock = utc_now,
 ) -> Task:
     """Create a task ledger entry and record a task.created event."""
     clean_title = _require_non_empty(title, "title")
     clean_priority = _require_non_empty(priority, "priority")
     created_at = format_event_time(clock())
-    task_id = get_next_sequential_id(connection, "tasks", "TASK")
+    task_id = task_id or get_next_sequential_id(connection, "tasks", "TASK")
 
     task = Task(
         id=task_id,

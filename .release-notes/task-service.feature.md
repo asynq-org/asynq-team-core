@@ -1,0 +1,1 @@
+- Added a core task service that creates task records and brief artifacts together.

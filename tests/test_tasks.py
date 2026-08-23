@@ -42,6 +42,22 @@ def test_create_task_persists_task_and_event(tmp_path: Path) -> None:
     assert event["actor_id"] == "founder"
 
 
+def test_create_task_can_use_preallocated_id(tmp_path: Path) -> None:
+    database_path = tmp_path / "team.db"
+    initialize_database(database_path)
+
+    with connect_database(database_path) as connection:
+        task = create_task(
+            connection,
+            title="First task",
+            actor_type="human",
+            actor_id="founder",
+            task_id="TASK-0042",
+        )
+
+    assert task.id == "TASK-0042"
+
+
 def test_list_tasks_filters_by_status(tmp_path: Path) -> None:
     database_path = tmp_path / "team.db"
     initialize_database(database_path)
