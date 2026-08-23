@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from asynq_team_core.events import Event, format_event_time, utc_now
+from asynq_team_core.ids import format_sequential_id
 
 
 @dataclass(frozen=True)
@@ -41,6 +42,16 @@ MIGRATIONS = (
 
         create index if not exists idx_events_type
             on events (type, created_at);
+        """,
+    ),
+    Migration(
+        version=2,
+        name="create_id_counters",
+        sql="""
+        create table if not exists id_counters (
+            name text primary key,
+            next_value integer not null
+        );
         """,
     ),
 )
@@ -93,6 +104,36 @@ def insert_event(connection: sqlite3.Connection, event: Event) -> None:
             record["hash"],
         ),
     )
+
+
+def get_next_sequential_id(
+    connection: sqlite3.Connection,
+    counter_name: str,
+    prefix: str,
+    width: int = 4,
+) -> str:
+    """Return the next formatted id from a SQLite-backed counter."""
+    if not counter_name.strip():
+        raise ValueError("counter_name must be a non-empty string.")
+
+    row = connection.execute(
+        "select next_value from id_counters where name = ?",
+        (counter_name,),
+    ).fetchone()
+    if row is None:
+        next_value = 1
+        connection.execute(
+            "insert into id_counters (name, next_value) values (?, ?)",
+            (counter_name, 2),
+        )
+    else:
+        next_value = int(row["next_value"])
+        connection.execute(
+            "update id_counters set next_value = ? where name = ?",
+            (next_value + 1, counter_name),
+        )
+
+    return format_sequential_id(prefix, next_value, width=width)
 
 
 def get_applied_migration_versions(connection: sqlite3.Connection) -> set[int]:

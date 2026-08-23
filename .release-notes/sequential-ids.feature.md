@@ -1,0 +1,1 @@
+- Added SQLite-backed sequential IDs for local runtime entities.
