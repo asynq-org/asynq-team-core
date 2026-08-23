@@ -1,0 +1,1 @@
+- Added core project initialization for `.team` directories and default config creation.
