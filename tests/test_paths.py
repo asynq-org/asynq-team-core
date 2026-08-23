@@ -1,6 +1,11 @@
 from pathlib import Path
 
-from asynq_team_core.paths import create_project_directories, get_config_path, get_project_layout, get_team_dir
+from asynq_team_core.paths import (
+    create_project_directories,
+    get_config_path,
+    get_project_layout,
+    get_team_dir,
+)
 
 
 def test_get_team_dir_uses_project_local_directory() -> None:

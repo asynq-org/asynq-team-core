@@ -1,0 +1,1 @@
+- Added typed core configuration defaults and YAML load/write helpers.
