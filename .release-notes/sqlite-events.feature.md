@@ -1,0 +1,1 @@
+- Added SQLite initialization with an explicit migration for persisted event records.
