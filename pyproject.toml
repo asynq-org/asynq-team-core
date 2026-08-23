@@ -16,6 +16,7 @@ PyYAML = ">=6,<7"
 SQLAlchemy = ">=2,<3"
 
 [tool.poetry.group.dev.dependencies]
+pip-audit = ">=2.7,<3"
 pytest = ">=8,<9"
 ruff = ">=0.6,<1"
 
