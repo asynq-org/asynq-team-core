@@ -10,28 +10,28 @@ from typing import Any
 def _get_mapping(data: dict[str, Any], key: str) -> dict[str, Any]:
     value = data.get(key, {})
     if not isinstance(value, dict):
-        raise ValueError(f"Config section '{key}' must be a mapping.")
+        raise TypeError(f"Config section '{key}' must be a mapping.")
     return value
 
 
 def _get_str(data: dict[str, Any], key: str, default: str) -> str:
     value = data.get(key, default)
     if not isinstance(value, str):
-        raise ValueError(f"Config value '{key}' must be a string.")
+        raise TypeError(f"Config value '{key}' must be a string.")
     return value
 
 
 def _get_bool(data: dict[str, Any], key: str, default: bool) -> bool:
     value = data.get(key, default)
     if not isinstance(value, bool):
-        raise ValueError(f"Config value '{key}' must be a boolean.")
+        raise TypeError(f"Config value '{key}' must be a boolean.")
     return value
 
 
 def _get_int(data: dict[str, Any], key: str, default: int) -> int:
     value = data.get(key, default)
     if not isinstance(value, int):
-        raise ValueError(f"Config value '{key}' must be an integer.")
+        raise TypeError(f"Config value '{key}' must be an integer.")
     return value
 
 
@@ -222,7 +222,7 @@ def load_config(path: Path) -> TeamConfig:
         data = yaml.safe_load(config_file) or {}
 
     if not isinstance(data, dict):
-        raise ValueError("Config root must be a mapping.")
+        raise TypeError("Config root must be a mapping.")
 
     return TeamConfig.from_mapping(data)
 

@@ -1,12 +1,11 @@
 """Project initialization helpers."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 from asynq_team_core.config import TeamConfig, default_config, write_config
 from asynq_team_core.paths import ProjectLayout, create_project_directories, get_project_layout
-
 
 ConfigWriter = Callable[[Path, TeamConfig], None]
 

@@ -3,7 +3,6 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-
 DEFAULT_TEAM_DIR_NAME = ".team"
 DEFAULT_CONFIG_FILE_NAME = "config.yaml"
 

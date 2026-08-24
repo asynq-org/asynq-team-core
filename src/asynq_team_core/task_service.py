@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 from asynq_team_core.artifacts import ArtifactWrite, write_task_brief
 from asynq_team_core.database import connect_database, get_next_sequential_id
@@ -29,7 +28,7 @@ def create_task_with_brief(
     actor_type: str,
     actor_id: str,
     priority: str = "normal",
-    assignee_id: Optional[str] = None,
+    assignee_id: str | None = None,
     clock: Clock = utc_now,
 ) -> CreatedTask:
     """Create a task, write its brief artifact, and record an audit event."""

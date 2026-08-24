@@ -6,7 +6,6 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
 from asynq_team_core.database import get_next_sequential_id, insert_event
 from asynq_team_core.events import Clock, create_event, format_event_time, utc_now
@@ -37,8 +36,8 @@ class Task:
     title: str
     status: TaskStatus
     priority: str
-    assignee_id: Optional[str]
-    brief_artifact_path: Optional[str]
+    assignee_id: str | None
+    brief_artifact_path: str | None
     created_at: str
     updated_at: str
 
@@ -49,9 +48,9 @@ def create_task(
     actor_type: str,
     actor_id: str,
     priority: str = "normal",
-    assignee_id: Optional[str] = None,
-    brief_artifact_path: Optional[str] = None,
-    task_id: Optional[str] = None,
+    assignee_id: str | None = None,
+    brief_artifact_path: str | None = None,
+    task_id: str | None = None,
     clock: Clock = utc_now,
 ) -> Task:
     """Create a task ledger entry and record a task.created event."""
@@ -116,7 +115,7 @@ def create_task(
     return task
 
 
-def get_task(connection: sqlite3.Connection, task_id: str) -> Optional[Task]:
+def get_task(connection: sqlite3.Connection, task_id: str) -> Task | None:
     """Return a task by id."""
     row = connection.execute("select * from tasks where id = ?", (task_id,)).fetchone()
     if row is None:
@@ -126,7 +125,7 @@ def get_task(connection: sqlite3.Connection, task_id: str) -> Optional[Task]:
 
 def list_tasks(
     connection: sqlite3.Connection,
-    status: Optional[TaskStatus] = None,
+    status: TaskStatus | None = None,
     limit: int = 50,
 ) -> list[Task]:
     """Return tasks ordered by most recently updated first."""
@@ -167,4 +166,4 @@ def _require_non_empty(value: str, field_name: str) -> str:
 
 
 def _parse_event_time(value: str) -> datetime:
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return datetime.fromisoformat(value)

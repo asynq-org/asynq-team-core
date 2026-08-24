@@ -1,9 +1,13 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
-from asynq_team_core.database import connect_database, get_applied_migration_versions, initialize_database
+from asynq_team_core.database import (
+    connect_database,
+    get_applied_migration_versions,
+    initialize_database,
+)
 from asynq_team_core.tasks import TaskStatus, create_task, get_task, list_tasks
 
 
@@ -28,7 +32,7 @@ def test_create_task_persists_task_and_event(tmp_path: Path) -> None:
             title="First task",
             actor_type="human",
             actor_id="founder",
-            clock=lambda: datetime(2026, 8, 23, 12, 30, 0, tzinfo=timezone.utc),
+            clock=lambda: datetime(2026, 8, 23, 12, 30, 0, tzinfo=UTC),
         )
         loaded = get_task(connection, task.id)
         event = connection.execute(
@@ -78,6 +82,8 @@ def test_create_task_rejects_empty_title(tmp_path: Path) -> None:
     database_path = tmp_path / "team.db"
     initialize_database(database_path)
 
-    with connect_database(database_path) as connection:
-        with pytest.raises(ValueError, match="title"):
-            create_task(connection, title="", actor_type="human", actor_id="founder")
+    with (
+        connect_database(database_path) as connection,
+        pytest.raises(ValueError, match="title"),
+    ):
+        create_task(connection, title="", actor_type="human", actor_id="founder")

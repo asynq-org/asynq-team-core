@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -6,7 +6,7 @@ from asynq_team_core.events import calculate_event_hash, create_event, format_ev
 
 
 def test_format_event_time_uses_utc_suffix() -> None:
-    value = datetime(2026, 8, 23, 12, 30, 0, tzinfo=timezone.utc)
+    value = datetime(2026, 8, 23, 12, 30, 0, tzinfo=UTC)
 
     assert format_event_time(value) == "2026-08-23T12:30:00Z"
 
@@ -21,7 +21,7 @@ def test_create_event_calculates_deterministic_hash() -> None:
         payload={"title": "First task"},
         prev_hash="previous",
         event_id="EVT-0001",
-        clock=lambda: datetime(2026, 8, 23, 12, 30, 0, tzinfo=timezone.utc),
+        clock=lambda: datetime(2026, 8, 23, 12, 30, 0, tzinfo=UTC),
     )
 
     assert event.hash == calculate_event_hash(
@@ -46,7 +46,7 @@ def test_event_record_serializes_payload_as_canonical_json() -> None:
         actor_id="founder",
         payload={"b": 2, "a": 1},
         event_id="EVT-0001",
-        clock=lambda: datetime(2026, 8, 23, 12, 30, 0, tzinfo=timezone.utc),
+        clock=lambda: datetime(2026, 8, 23, 12, 30, 0, tzinfo=UTC),
     )
 
     assert event.to_record()["payload_json"] == '{"a":1,"b":2}'

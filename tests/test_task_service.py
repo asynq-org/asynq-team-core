@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -21,7 +21,7 @@ def test_create_task_with_brief_writes_artifact_and_task_record(tmp_path: Path) 
         brief_md="Build the first task.",
         actor_type="human",
         actor_id="founder",
-        clock=lambda: datetime(2026, 8, 23, 12, 30, 0, tzinfo=timezone.utc),
+        clock=lambda: datetime(2026, 8, 23, 12, 30, 0, tzinfo=UTC),
     )
 
     with connect_database(layout.database_path) as connection:

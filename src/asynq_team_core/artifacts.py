@@ -8,7 +8,6 @@ from pathlib import Path
 
 from asynq_team_core.paths import ProjectLayout
 
-
 TASK_ID_PATTERN = re.compile(r"^TASK-[0-9]{4,}$")
 
 

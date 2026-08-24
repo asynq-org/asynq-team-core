@@ -2,7 +2,6 @@
 
 import re
 
-
 ID_PREFIX_PATTERN = re.compile(r"^[A-Z][A-Z0-9]*$")
 
 

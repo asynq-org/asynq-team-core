@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from asynq_team_core.database import (
@@ -36,7 +36,7 @@ def test_insert_event_persists_event_record(tmp_path: Path) -> None:
         actor_id="founder",
         payload={"title": "First task"},
         event_id="EVT-0001",
-        clock=lambda: datetime(2026, 8, 23, 12, 30, 0, tzinfo=timezone.utc),
+        clock=lambda: datetime(2026, 8, 23, 12, 30, 0, tzinfo=UTC),
     )
 
     with connect_database(database_path) as connection:

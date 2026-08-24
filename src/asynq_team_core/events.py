@@ -5,24 +5,24 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Callable, Optional
-
+from datetime import UTC, datetime
+from typing import Any
 
 Clock = Callable[[], datetime]
 
 
 def utc_now() -> datetime:
     """Return the current timezone-aware UTC datetime."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def format_event_time(value: datetime) -> str:
     """Format an event timestamp as an ISO-8601 UTC string."""
     if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 def new_event_id() -> str:
@@ -42,7 +42,7 @@ class Event:
     actor_id: str
     payload: dict[str, Any]
     created_at: str
-    prev_hash: Optional[str]
+    prev_hash: str | None
     hash: str
 
     def to_record(self) -> dict[str, Any]:
@@ -68,8 +68,8 @@ def create_event(
     actor_type: str,
     actor_id: str,
     payload: dict[str, Any],
-    prev_hash: Optional[str] = None,
-    event_id: Optional[str] = None,
+    prev_hash: str | None = None,
+    event_id: str | None = None,
     clock: Clock = utc_now,
 ) -> Event:
     """Create a structured event and calculate its hash."""
@@ -110,7 +110,7 @@ def calculate_event_hash(
     actor_id: str,
     payload: dict[str, Any],
     created_at: str,
-    prev_hash: Optional[str],
+    prev_hash: str | None,
 ) -> str:
     """Return a deterministic SHA-256 hash for an event record."""
     hash_input = {
