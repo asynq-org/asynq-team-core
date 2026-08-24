@@ -28,6 +28,7 @@ class ProjectLayout:
     tasks_dir: Path
     runs_dir: Path
     adr_dir: Path
+    rules_dir: Path
     policy_dir: Path
     backups_dir: Path
     database_path: Path
@@ -45,6 +46,7 @@ def get_project_layout(workspace: Path) -> ProjectLayout:
         tasks_dir=team_dir / "tasks",
         runs_dir=team_dir / "runs",
         adr_dir=team_dir / "adr",
+        rules_dir=team_dir / "rules",
         policy_dir=team_dir / "policy",
         backups_dir=team_dir / "backups",
         database_path=team_dir / "team.db",
@@ -59,6 +61,7 @@ def create_project_directories(layout: ProjectLayout) -> None:
         layout.tasks_dir,
         layout.runs_dir,
         layout.adr_dir,
+        layout.rules_dir,
         layout.policy_dir,
         layout.backups_dir,
     ):

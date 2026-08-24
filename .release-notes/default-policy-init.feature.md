@@ -1,0 +1,1 @@
+- Added default agent, rule, and policy file seeding during project initialization.
