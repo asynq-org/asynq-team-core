@@ -1,0 +1,1 @@
+- Moved SQLite-specific persistence behind an explicit adapter module.

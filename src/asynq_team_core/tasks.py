@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
-import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 
-from asynq_team_core.database import get_next_sequential_id, insert_event
+from asynq_team_core.database import (
+    DatabaseConnection,
+    DatabaseRow,
+    get_next_sequential_id,
+    insert_event,
+)
 from asynq_team_core.events import Clock, create_event, format_event_time, utc_now
 
 
@@ -43,7 +47,7 @@ class Task:
 
 
 def create_task(
-    connection: sqlite3.Connection,
+    connection: DatabaseConnection,
     title: str,
     actor_type: str,
     actor_id: str,
@@ -115,7 +119,7 @@ def create_task(
     return task
 
 
-def get_task(connection: sqlite3.Connection, task_id: str) -> Task | None:
+def get_task(connection: DatabaseConnection, task_id: str) -> Task | None:
     """Return a task by id."""
     row = connection.execute("select * from tasks where id = ?", (task_id,)).fetchone()
     if row is None:
@@ -124,7 +128,7 @@ def get_task(connection: sqlite3.Connection, task_id: str) -> Task | None:
 
 
 def list_tasks(
-    connection: sqlite3.Connection,
+    connection: DatabaseConnection,
     status: TaskStatus | None = None,
     limit: int = 50,
 ) -> list[Task]:
@@ -146,7 +150,7 @@ def list_tasks(
     return [_task_from_row(row) for row in rows]
 
 
-def _task_from_row(row: sqlite3.Row) -> Task:
+def _task_from_row(row: DatabaseRow) -> Task:
     return Task(
         id=row["id"],
         title=row["title"],
