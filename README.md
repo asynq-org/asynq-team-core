@@ -2,6 +2,17 @@
 
 `asynq-team-core` is the Python runtime library for local-first Asynq Team workspaces.
 
+Asynq Team is a local-first operating layer for working with AI agents as a small software team. Instead of treating agent work as disposable chat history, it keeps tasks, plans, approvals, audit events, and human decisions in a project-local workspace that can be inspected, tested, and versioned.
+
+The goal is to make agent-assisted development more reliable:
+
+- agents work from explicit tasks instead of ad hoc prompts;
+- human approvals gate sensitive actions;
+- audit records explain what happened and who requested it;
+- Markdown artifacts stay easy to review in git;
+- SQLite keeps runtime state queryable without requiring hosted infrastructure;
+- the same core runtime can support a CLI now and richer interfaces later.
+
 It provides the domain and persistence building blocks used by the CLI and future interfaces:
 
 - project initialization for `.team/` workspaces;
