@@ -79,6 +79,53 @@ MIGRATIONS = (
             on tasks (assignee_id, status);
         """,
     ),
+    Migration(
+        version=4,
+        name="create_human_attention_tables",
+        sql="""
+        create table if not exists approvals (
+            id text primary key,
+            action text not null,
+            reason text not null,
+            requester_type text not null,
+            requester_id text not null,
+            approver_id text not null,
+            subject_type text,
+            subject_id text,
+            status text not null,
+            requested_at text not null,
+            decided_at text,
+            decided_by_type text,
+            decided_by_id text,
+            decision_reason text
+        );
+
+        create index if not exists idx_approvals_status
+            on approvals (status, requested_at);
+
+        create index if not exists idx_approvals_approver
+            on approvals (approver_id, status, requested_at);
+
+        create table if not exists agent_inbox (
+            id text primary key,
+            recipient_id text not null,
+            item_type text not null,
+            title text not null,
+            body text not null,
+            status text not null,
+            source_type text,
+            source_id text,
+            created_at text not null,
+            updated_at text not null
+        );
+
+        create index if not exists idx_agent_inbox_recipient
+            on agent_inbox (recipient_id, status, updated_at);
+
+        create index if not exists idx_agent_inbox_source
+            on agent_inbox (source_type, source_id);
+        """,
+    ),
 )
 
 
@@ -193,4 +240,3 @@ def _apply_pending_migrations(connection: SQLiteConnection) -> None:
             """,
             (migration.version, migration.name, format_event_time(utc_now())),
         )
-
