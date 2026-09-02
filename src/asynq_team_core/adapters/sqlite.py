@@ -159,6 +159,30 @@ MIGRATIONS = (
             on comment_mentions (comment_id);
         """,
     ),
+    Migration(
+        version=6,
+        name="create_runs",
+        sql="""
+        create table if not exists runs (
+            id text primary key,
+            task_id text not null,
+            agent_id text not null,
+            status text not null,
+            artifact_dir_path text,
+            created_at text not null,
+            updated_at text not null
+        );
+
+        create index if not exists idx_runs_task
+            on runs (task_id, created_at);
+
+        create index if not exists idx_runs_agent
+            on runs (agent_id, status, updated_at);
+
+        create index if not exists idx_runs_status
+            on runs (status, updated_at);
+        """,
+    ),
 )
 
 

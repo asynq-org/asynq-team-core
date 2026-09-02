@@ -19,6 +19,7 @@ It provides the domain and persistence building blocks used by the CLI and futur
 - local SQLite database setup and migrations;
 - task records and Markdown task briefs;
 - task comments and mentions;
+- agent run records and artifact directories;
 - append-only audit events;
 - default agent, rule, and policy file seeding;
 - approval requests and inbox items for human attention.

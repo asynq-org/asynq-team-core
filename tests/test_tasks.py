@@ -19,7 +19,7 @@ def test_initialize_database_applies_task_migration(tmp_path: Path) -> None:
     with connect_database(database_path) as connection:
         versions = get_applied_migration_versions(connection)
 
-    assert versions == {1, 2, 3, 4, 5}
+    assert versions == {1, 2, 3, 4, 5, 6}
 
 
 def test_create_task_persists_task_and_event(tmp_path: Path) -> None:

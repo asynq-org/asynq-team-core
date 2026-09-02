@@ -1,0 +1,1 @@
+- Added core agent run records with lifecycle status updates and artifact directory creation.

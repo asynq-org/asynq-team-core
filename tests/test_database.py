@@ -21,7 +21,7 @@ def test_initialize_database_applies_migrations(tmp_path: Path) -> None:
             "select name from sqlite_master where type = 'table' and name = 'events'"
         ).fetchone()
 
-    assert versions == {1, 2, 3, 4, 5}
+    assert versions == {1, 2, 3, 4, 5, 6}
     assert events_table is not None
 
 
