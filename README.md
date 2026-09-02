@@ -18,6 +18,7 @@ It provides the domain and persistence building blocks used by the CLI and futur
 - project initialization for `.team/` workspaces;
 - local SQLite database setup and migrations;
 - task records and Markdown task briefs;
+- task comments and mentions;
 - append-only audit events;
 - default agent, rule, and policy file seeding;
 - approval requests and inbox items for human attention.
