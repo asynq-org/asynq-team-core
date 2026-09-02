@@ -16,7 +16,7 @@ def test_initialize_database_applies_id_counter_migration(tmp_path: Path) -> Non
     with connect_database(database_path) as connection:
         versions = get_applied_migration_versions(connection)
 
-    assert versions == {1, 2, 3, 4}
+    assert versions == {1, 2, 3, 4, 5}
 
 
 def test_get_next_sequential_id_uses_persistent_counter(tmp_path: Path) -> None:

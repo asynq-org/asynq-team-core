@@ -126,6 +126,39 @@ MIGRATIONS = (
             on agent_inbox (source_type, source_id);
         """,
     ),
+    Migration(
+        version=5,
+        name="create_comments_and_mentions",
+        sql="""
+        create table if not exists comments (
+            id text primary key,
+            task_id text not null,
+            author_type text not null,
+            author_id text not null,
+            body text not null,
+            created_at text not null
+        );
+
+        create index if not exists idx_comments_task
+            on comments (task_id, created_at);
+
+        create table if not exists comment_mentions (
+            id text primary key,
+            comment_id text not null,
+            recipient_id text not null,
+            status text not null,
+            created_at text not null,
+            resolved_at text,
+            foreign key (comment_id) references comments (id) on delete cascade
+        );
+
+        create index if not exists idx_comment_mentions_recipient
+            on comment_mentions (recipient_id, status, created_at);
+
+        create index if not exists idx_comment_mentions_comment
+            on comment_mentions (comment_id);
+        """,
+    ),
 )
 
 

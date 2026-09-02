@@ -26,6 +26,7 @@ class InboxItemType(str, Enum):
     """Supported inbox item types."""
 
     APPROVAL = "approval"
+    MENTION = "mention"
     QUESTION = "question"
     BLOCKED_TASK = "blocked_task"
     REVIEW_RETURNED = "review_returned"
