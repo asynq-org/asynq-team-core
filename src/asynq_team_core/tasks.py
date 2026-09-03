@@ -150,6 +150,48 @@ def list_tasks(
     return [_task_from_row(row) for row in rows]
 
 
+def update_task_status(
+    connection: DatabaseConnection,
+    task_id: str,
+    status: TaskStatus,
+    actor_type: str,
+    actor_id: str,
+    clock: Clock = utc_now,
+) -> Task:
+    """Update a task status and record an audit event."""
+    task = get_task(connection, task_id)
+    if task is None:
+        raise ValueError(f"Task not found: {task_id}")
+    if task.status is status:
+        return task
+
+    updated_at = format_event_time(clock())
+    connection.execute(
+        "update tasks set status = ?, updated_at = ? where id = ?",
+        (status.value, updated_at, task.id),
+    )
+    insert_event(
+        connection,
+        create_event(
+            event_type="task.status_changed",
+            entity_type="task",
+            entity_id=task.id,
+            actor_type=actor_type,
+            actor_id=actor_id,
+            payload={
+                "previous_status": task.status.value,
+                "status": status.value,
+            },
+            clock=lambda: _parse_event_time(updated_at),
+        ),
+    )
+
+    updated = get_task(connection, task.id)
+    if updated is None:
+        raise RuntimeError(f"Task disappeared after status update: {task.id}")
+    return updated
+
+
 def _task_from_row(row: DatabaseRow) -> Task:
     return Task(
         id=row["id"],

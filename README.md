@@ -18,6 +18,7 @@ It provides the domain and persistence building blocks used by the CLI and futur
 - project initialization for `.team/` workspaces;
 - local SQLite database setup and migrations;
 - task records and Markdown task briefs;
+- task status updates;
 - task comments and mentions;
 - agent run records and artifact directories;
 - run work packets that collect task, agent, and rule context;
@@ -71,6 +72,22 @@ created = create_task_with_brief(
 
 print(created.task.id)
 print(created.brief.relative_path)
+```
+
+Update task status:
+
+```python
+from asynq_team_core.database import connect_database
+from asynq_team_core.tasks import TaskStatus, update_task_status
+
+with connect_database(initialization.layout.database_path) as connection:
+    update_task_status(
+        connection,
+        created.task.id,
+        TaskStatus.IN_PROGRESS,
+        actor_type="agent",
+        actor_id="george",
+    )
 ```
 
 Prepare a run work packet:

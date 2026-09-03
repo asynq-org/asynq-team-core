@@ -8,7 +8,13 @@ from asynq_team_core.database import (
     get_applied_migration_versions,
     initialize_database,
 )
-from asynq_team_core.tasks import TaskStatus, create_task, get_task, list_tasks
+from asynq_team_core.tasks import (
+    TaskStatus,
+    create_task,
+    get_task,
+    list_tasks,
+    update_task_status,
+)
 
 
 def test_initialize_database_applies_task_migration(tmp_path: Path) -> None:
@@ -76,6 +82,79 @@ def test_list_tasks_filters_by_status(tmp_path: Path) -> None:
         tasks = list_tasks(connection, status=TaskStatus.CREATED)
 
     assert tasks == [task]
+
+
+def test_update_task_status_persists_status_and_event(tmp_path: Path) -> None:
+    database_path = tmp_path / "team.db"
+    initialize_database(database_path)
+
+    with connect_database(database_path) as connection:
+        task = create_task(
+            connection,
+            title="First task",
+            actor_type="human",
+            actor_id="founder",
+        )
+        updated = update_task_status(
+            connection,
+            task_id=task.id,
+            status=TaskStatus.IN_PROGRESS,
+            actor_type="agent",
+            actor_id="george",
+        )
+        event = connection.execute(
+            "select * from events where type = ? and entity_id = ?",
+            ("task.status_changed", task.id),
+        ).fetchone()
+
+    assert updated.status is TaskStatus.IN_PROGRESS
+    assert event is not None
+
+
+def test_update_task_status_returns_existing_task_when_status_is_unchanged(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "team.db"
+    initialize_database(database_path)
+
+    with connect_database(database_path) as connection:
+        task = create_task(
+            connection,
+            title="First task",
+            actor_type="human",
+            actor_id="founder",
+        )
+        updated = update_task_status(
+            connection,
+            task_id=task.id,
+            status=TaskStatus.CREATED,
+            actor_type="agent",
+            actor_id="george",
+        )
+        events = connection.execute(
+            "select * from events where type = ?",
+            ("task.status_changed",),
+        ).fetchall()
+
+    assert updated == task
+    assert events == []
+
+
+def test_update_task_status_rejects_missing_task(tmp_path: Path) -> None:
+    database_path = tmp_path / "team.db"
+    initialize_database(database_path)
+
+    with (
+        connect_database(database_path) as connection,
+        pytest.raises(ValueError, match="Task not found: TASK-9999"),
+    ):
+        update_task_status(
+            connection,
+            task_id="TASK-9999",
+            status=TaskStatus.IN_PROGRESS,
+            actor_type="agent",
+            actor_id="george",
+        )
 
 
 def test_create_task_rejects_empty_title(tmp_path: Path) -> None:
