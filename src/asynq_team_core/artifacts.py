@@ -79,6 +79,23 @@ def write_run_result(
     )
 
 
+def write_run_review(
+    layout: ProjectLayout,
+    artifact_dir_path: str,
+    body_md: str,
+    overwrite: bool = False,
+) -> ArtifactWrite:
+    """Write the supervisor review artifact for a run."""
+    return _write_run_artifact(
+        layout=layout,
+        artifact_dir_path=artifact_dir_path,
+        file_name="review.md",
+        body_md=body_md,
+        label="Run review",
+        overwrite=overwrite,
+    )
+
+
 def _write_run_artifact(
     layout: ProjectLayout,
     artifact_dir_path: str,

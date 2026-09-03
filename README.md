@@ -22,6 +22,7 @@ It provides the domain and persistence building blocks used by the CLI and futur
 - agent run records and artifact directories;
 - run work packets that collect task, agent, and rule context;
 - run result submission for supervisor review;
+- supervisor review artifacts and approve/return run decisions;
 - append-only audit events;
 - default agent, rule, and policy file seeding;
 - approval requests and inbox items for human attention.
@@ -113,6 +114,25 @@ submission = submit_run_for_review(
 
 print(submission.artifact.relative_path)
 print(submission.run.status.value)
+```
+
+Review a submitted run:
+
+```python
+from asynq_team_core.run_review import RunReviewDecision, review_run
+
+review = review_run(
+    database_path=initialization.layout.database_path,
+    layout=initialization.layout,
+    run_id=run.id,
+    decision=RunReviewDecision.APPROVE,
+    body_md="Looks ready.",
+    actor_type="agent",
+    actor_id="supervisor",
+)
+
+print(review.artifact.relative_path)
+print(review.run.status.value)
 ```
 
 Request and decide an approval:
