@@ -7,6 +7,9 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from asynq_team_core.approvals import ApprovalRequest, request_approval
+from asynq_team_core.database import connect_database
+from asynq_team_core.events import Clock, utc_now
 from asynq_team_core.paths import ProjectLayout
 
 
@@ -46,9 +49,19 @@ class CapabilityEvaluation:
     reason: str
 
 
+@dataclass(frozen=True)
+class CapabilityAuthorization:
+    """Result of authorizing one requested capability."""
+
+    evaluation: CapabilityEvaluation
+    approval_request: ApprovalRequest | None
+
+
 def load_capability_policy(layout: ProjectLayout) -> CapabilityPolicy:
     """Load and validate project-local capability policy."""
-    data = _load_yaml_mapping(layout.policy_dir / "capabilities.yaml", "Capability policy")
+    policy_path = layout.policy_dir / "capabilities.yaml"
+    _ensure_child_path(layout.policy_dir, policy_path)
+    data = _load_yaml_mapping(policy_path, "Capability policy")
     version = data.get("version")
     if not isinstance(version, int):
         raise TypeError("Capability policy version must be an integer.")
@@ -115,6 +128,40 @@ def evaluate_agent_capability(
     )
 
 
+def authorize_agent_capability(
+    database_path: Path,
+    layout: ProjectLayout,
+    agent_id: str,
+    capability: str,
+    reason: str,
+    approver_id: str = "founder",
+    subject_type: str | None = None,
+    subject_id: str | None = None,
+    clock: Clock = utc_now,
+) -> CapabilityAuthorization:
+    """Authorize a capability or create the required approval request."""
+    evaluation = evaluate_agent_capability(layout, agent_id, capability)
+    if evaluation.decision is CapabilityDecision.ALLOW:
+        return CapabilityAuthorization(evaluation=evaluation, approval_request=None)
+    if evaluation.decision is CapabilityDecision.DENY:
+        raise PermissionError(evaluation.reason)
+
+    with connect_database(database_path) as connection:
+        approval_request = request_approval(
+            connection,
+            action=capability,
+            reason=reason,
+            requester_type="agent",
+            requester_id=agent_id,
+            approver_id=approver_id,
+            subject_type=subject_type,
+            subject_id=subject_id,
+            clock=clock,
+        )
+
+    return CapabilityAuthorization(evaluation=evaluation, approval_request=approval_request)
+
+
 def _parse_role_capability_policy(role: Any, value: Any) -> RoleCapabilityPolicy:
     if not isinstance(role, str) or not role.strip():
         raise ValueError("Capability policy role names must be non-empty strings.")
@@ -146,7 +193,9 @@ def _parse_capability_list(value: Any, role: str, field: str) -> tuple[str, ...]
 
 
 def _load_agent_role(layout: ProjectLayout, agent_id: str) -> str:
-    data = _load_yaml_mapping(layout.agents_dir / f"{agent_id}.yaml", "Agent manifest")
+    path = layout.agents_dir / f"{agent_id}.yaml"
+    _ensure_child_path(layout.agents_dir, path)
+    data = _load_yaml_mapping(path, "Agent manifest")
     role = data.get("role")
     if not isinstance(role, str) or not role.strip():
         raise ValueError(f"Agent manifest role must be a non-empty string: {agent_id}")
@@ -164,6 +213,16 @@ def _load_yaml_mapping(path: Path, document_name: str) -> dict[str, Any]:
         raise TypeError(f"{document_name} root must be a mapping.")
 
     return data
+
+
+def _ensure_child_path(parent: Path, child: Path) -> None:
+    parent_resolved = parent.resolve(strict=False)
+    child_resolved = child.resolve(strict=False)
+
+    try:
+        child_resolved.relative_to(parent_resolved)
+    except ValueError as exc:
+        raise ValueError(f"Policy path escapes parent directory: {child}") from exc
 
 
 def _require_yaml() -> Any:

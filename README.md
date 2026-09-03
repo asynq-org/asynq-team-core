@@ -28,6 +28,7 @@ It provides the domain and persistence building blocks used by the CLI and futur
 - local doctor diagnostics for workspace setup and database migrations;
 - local SQLite database backups;
 - capability policy loading and agent capability evaluation;
+- capability authorization that creates approval requests for gated actions;
 - task-scoped audit event queries;
 - append-only audit events;
 - default agent, rule, and policy file seeding;
@@ -224,6 +225,25 @@ evaluation = evaluate_agent_capability(
 
 if evaluation.decision is CapabilityDecision.REQUIRE_APPROVAL:
     print("Ask for approval before continuing.")
+```
+
+Authorize a capability and create an approval when required:
+
+```python
+from asynq_team_core.policy import authorize_agent_capability
+
+authorization = authorize_agent_capability(
+    database_path=initialization.layout.database_path,
+    layout=initialization.layout,
+    agent_id="george",
+    capability="main.merge",
+    reason="Merge reviewed changes.",
+    subject_type="run",
+    subject_id=run.id,
+)
+
+if authorization.approval_request:
+    print(authorization.approval_request.approval.id)
 ```
 
 Request and decide an approval:

@@ -1,0 +1,1 @@
+- Add Core capability authorization that either allows, denies, or creates an approval request.
