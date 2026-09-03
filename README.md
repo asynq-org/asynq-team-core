@@ -27,6 +27,7 @@ It provides the domain and persistence building blocks used by the CLI and futur
 - supervisor review artifacts and approve/return run decisions;
 - local doctor diagnostics for workspace setup and database migrations;
 - local SQLite database backups;
+- capability policy loading and agent capability evaluation;
 - task-scoped audit event queries;
 - append-only audit events;
 - default agent, rule, and policy file seeding;
@@ -208,6 +209,21 @@ from asynq_team_core.audit import list_task_audit_events
 
 for event in list_task_audit_events(initialization.layout.database_path, created.task.id):
     print(event.created_at, event.event_type, event.actor_id)
+```
+
+Evaluate an agent capability:
+
+```python
+from asynq_team_core.policy import CapabilityDecision, evaluate_agent_capability
+
+evaluation = evaluate_agent_capability(
+    initialization.layout,
+    agent_id="george",
+    capability="main.merge",
+)
+
+if evaluation.decision is CapabilityDecision.REQUIRE_APPROVAL:
+    print("Ask for approval before continuing.")
 ```
 
 Request and decide an approval:

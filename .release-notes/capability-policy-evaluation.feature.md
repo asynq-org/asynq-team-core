@@ -1,0 +1,1 @@
+- Add Core capability policy loading and agent capability evaluation.
