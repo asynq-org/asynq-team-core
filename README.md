@@ -21,6 +21,7 @@ It provides the domain and persistence building blocks used by the CLI and futur
 - task status updates;
 - task comments and mentions;
 - agent run records and artifact directories;
+- task run start workflow that prepares work context in one call;
 - run work packets that collect task, agent, and rule context;
 - run result submission for supervisor review;
 - supervisor review artifacts and approve/return run decisions;
@@ -90,7 +91,26 @@ with connect_database(initialization.layout.database_path) as connection:
     )
 ```
 
-Prepare a run work packet:
+Start a task run and prepare its work packet:
+
+```python
+from asynq_team_core.run_task import start_task_run
+
+started = start_task_run(
+    database_path=initialization.layout.database_path,
+    layout=initialization.layout,
+    task_id=created.task.id,
+    agent_id="george",
+    actor_type="agent",
+    actor_id="george",
+)
+
+run = started.work_packet.run
+print(run.id)
+print(started.work_packet.artifact.relative_path)
+```
+
+Or prepare a run work packet for an existing run:
 
 ```python
 from asynq_team_core.run_service import create_run_with_artifact_dir
