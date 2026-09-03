@@ -23,6 +23,7 @@ It provides the domain and persistence building blocks used by the CLI and futur
 - run work packets that collect task, agent, and rule context;
 - run result submission for supervisor review;
 - supervisor review artifacts and approve/return run decisions;
+- local doctor diagnostics for workspace setup and database migrations;
 - append-only audit events;
 - default agent, rule, and policy file seeding;
 - approval requests and inbox items for human attention.
@@ -133,6 +134,16 @@ review = review_run(
 
 print(review.artifact.relative_path)
 print(review.run.status.value)
+```
+
+Run workspace diagnostics:
+
+```python
+from asynq_team_core.doctor import run_doctor
+
+report = run_doctor(initialization.layout)
+for check in report.checks:
+    print(check.status.value, check.name, check.message)
 ```
 
 Request and decide an approval:

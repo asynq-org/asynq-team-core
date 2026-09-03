@@ -1,0 +1,1 @@
+- Added local doctor diagnostics for workspace setup, default files, and database migrations.

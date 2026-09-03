@@ -37,3 +37,8 @@ def get_next_sequential_id(
 def get_applied_migration_versions(connection: DatabaseConnection) -> set[int]:
     """Return applied migration versions using the configured adapter."""
     return sqlite.get_applied_migration_versions(connection)
+
+
+def get_expected_migration_versions() -> set[int]:
+    """Return migration versions supported by the configured adapter."""
+    return sqlite.get_expected_migration_versions()

@@ -272,6 +272,11 @@ def get_applied_migration_versions(connection: SQLiteConnection) -> set[int]:
     return {int(row["version"]) for row in rows}
 
 
+def get_expected_migration_versions() -> set[int]:
+    """Return migration versions supported by this adapter."""
+    return {migration.version for migration in MIGRATIONS}
+
+
 def _ensure_schema_migrations(connection: SQLiteConnection) -> None:
     connection.execute(
         """
