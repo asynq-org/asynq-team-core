@@ -52,8 +52,43 @@ def write_run_work_packet(
     overwrite: bool = False,
 ) -> ArtifactWrite:
     """Write the initial work packet for a run."""
+    return _write_run_artifact(
+        layout=layout,
+        artifact_dir_path=artifact_dir_path,
+        file_name="work.md",
+        body_md=body_md,
+        label="Run work packet",
+        overwrite=overwrite,
+    )
+
+
+def write_run_result(
+    layout: ProjectLayout,
+    artifact_dir_path: str,
+    body_md: str,
+    overwrite: bool = False,
+) -> ArtifactWrite:
+    """Write the review result artifact for a run."""
+    return _write_run_artifact(
+        layout=layout,
+        artifact_dir_path=artifact_dir_path,
+        file_name="result.md",
+        body_md=body_md,
+        label="Run result",
+        overwrite=overwrite,
+    )
+
+
+def _write_run_artifact(
+    layout: ProjectLayout,
+    artifact_dir_path: str,
+    file_name: str,
+    body_md: str,
+    label: str,
+    overwrite: bool,
+) -> ArtifactWrite:
     artifact_dir = _resolve_run_artifact_dir(layout, artifact_dir_path)
-    artifact_path = artifact_dir / "work.md"
+    artifact_path = artifact_dir / file_name
 
     _ensure_child_path(layout.runs_dir, artifact_path)
     artifact_dir.mkdir(parents=True, exist_ok=True)
@@ -65,7 +100,7 @@ def write_run_work_packet(
             if body_md and not body_md.endswith("\n"):
                 artifact_file.write("\n")
     except FileExistsError as exc:
-        raise ValueError(f"Run work packet already exists: {artifact_path}") from exc
+        raise ValueError(f"{label} already exists: {artifact_path}") from exc
 
     return ArtifactWrite(
         path=artifact_path,

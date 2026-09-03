@@ -21,6 +21,7 @@ It provides the domain and persistence building blocks used by the CLI and futur
 - task comments and mentions;
 - agent run records and artifact directories;
 - run work packets that collect task, agent, and rule context;
+- run result submission for supervisor review;
 - append-only audit events;
 - default agent, rule, and policy file seeding;
 - approval requests and inbox items for human attention.
@@ -92,6 +93,26 @@ packet = prepare_run_work_packet(
 )
 
 print(packet.artifact.relative_path)
+```
+
+Submit a run for review:
+
+```python
+from asynq_team_core.run_submission import submit_run_for_review
+
+submission = submit_run_for_review(
+    database_path=initialization.layout.database_path,
+    layout=initialization.layout,
+    run_id=run.id,
+    summary_md="Implemented the first pass.",
+    checks_md="- poetry run pytest",
+    reviewer_id="supervisor",
+    actor_type="agent",
+    actor_id="george",
+)
+
+print(submission.artifact.relative_path)
+print(submission.run.status.value)
 ```
 
 Request and decide an approval:
