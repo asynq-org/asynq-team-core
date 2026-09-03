@@ -24,6 +24,7 @@ It provides the domain and persistence building blocks used by the CLI and futur
 - run result submission for supervisor review;
 - supervisor review artifacts and approve/return run decisions;
 - local doctor diagnostics for workspace setup and database migrations;
+- local SQLite database backups;
 - append-only audit events;
 - default agent, rule, and policy file seeding;
 - approval requests and inbox items for human attention.
@@ -144,6 +145,22 @@ from asynq_team_core.doctor import run_doctor
 report = run_doctor(initialization.layout)
 for check in report.checks:
     print(check.status.value, check.name, check.message)
+```
+
+Create and list local database backups:
+
+```python
+from asynq_team_core.backups import create_database_backup, list_database_backups
+
+backup = create_database_backup(
+    database_path=initialization.layout.database_path,
+    layout=initialization.layout,
+    actor_type="human",
+    actor_id="founder",
+)
+
+print(backup.relative_path)
+print([item.relative_path for item in list_database_backups(initialization.layout)])
 ```
 
 Request and decide an approval:
