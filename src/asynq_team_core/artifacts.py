@@ -45,10 +45,47 @@ def write_task_brief(
     )
 
 
+def write_run_work_packet(
+    layout: ProjectLayout,
+    artifact_dir_path: str,
+    body_md: str,
+    overwrite: bool = False,
+) -> ArtifactWrite:
+    """Write the initial work packet for a run."""
+    artifact_dir = _resolve_run_artifact_dir(layout, artifact_dir_path)
+    artifact_path = artifact_dir / "work.md"
+
+    _ensure_child_path(layout.runs_dir, artifact_path)
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+
+    mode = "w" if overwrite else "x"
+    try:
+        with artifact_path.open(mode, encoding="utf-8") as artifact_file:
+            artifact_file.write(body_md)
+            if body_md and not body_md.endswith("\n"):
+                artifact_file.write("\n")
+    except FileExistsError as exc:
+        raise ValueError(f"Run work packet already exists: {artifact_path}") from exc
+
+    return ArtifactWrite(
+        path=artifact_path,
+        relative_path=artifact_path.relative_to(layout.workspace).as_posix(),
+    )
+
+
 def _validate_task_id(task_id: str) -> str:
     if not TASK_ID_PATTERN.match(task_id):
         raise ValueError("task_id must use TASK-0001 format.")
     return task_id
+
+
+def _resolve_run_artifact_dir(layout: ProjectLayout, artifact_dir_path: str) -> Path:
+    if not artifact_dir_path or not artifact_dir_path.strip():
+        raise ValueError("artifact_dir_path must be a non-empty string.")
+
+    artifact_dir = layout.workspace / artifact_dir_path
+    _ensure_child_path(layout.runs_dir, artifact_dir)
+    return artifact_dir
 
 
 def _ensure_child_path(parent: Path, child: Path) -> None:

@@ -1,0 +1,1 @@
+- Added run work packet preparation that writes task, agent, and rule context into run artifacts.

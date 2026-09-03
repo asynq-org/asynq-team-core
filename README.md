@@ -20,6 +20,7 @@ It provides the domain and persistence building blocks used by the CLI and futur
 - task records and Markdown task briefs;
 - task comments and mentions;
 - agent run records and artifact directories;
+- run work packets that collect task, agent, and rule context;
 - append-only audit events;
 - default agent, rule, and policy file seeding;
 - approval requests and inbox items for human attention.
@@ -65,6 +66,32 @@ created = create_task_with_brief(
 
 print(created.task.id)
 print(created.brief.relative_path)
+```
+
+Prepare a run work packet:
+
+```python
+from asynq_team_core.run_service import create_run_with_artifact_dir
+from asynq_team_core.run_work import prepare_run_work_packet
+
+run = create_run_with_artifact_dir(
+    database_path=initialization.layout.database_path,
+    layout=initialization.layout,
+    task_id=created.task.id,
+    agent_id="george",
+    actor_type="human",
+    actor_id="founder",
+).run
+
+packet = prepare_run_work_packet(
+    database_path=initialization.layout.database_path,
+    layout=initialization.layout,
+    run_id=run.id,
+    actor_type="agent",
+    actor_id="george",
+)
+
+print(packet.artifact.relative_path)
 ```
 
 Request and decide an approval:
