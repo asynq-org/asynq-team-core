@@ -25,6 +25,7 @@ It provides the domain and persistence building blocks used by the CLI and futur
 - supervisor review artifacts and approve/return run decisions;
 - local doctor diagnostics for workspace setup and database migrations;
 - local SQLite database backups;
+- task-scoped audit event queries;
 - append-only audit events;
 - default agent, rule, and policy file seeding;
 - approval requests and inbox items for human attention.
@@ -161,6 +162,15 @@ backup = create_database_backup(
 
 print(backup.relative_path)
 print([item.relative_path for item in list_database_backups(initialization.layout)])
+```
+
+Show task-scoped audit events:
+
+```python
+from asynq_team_core.audit import list_task_audit_events
+
+for event in list_task_audit_events(initialization.layout.database_path, created.task.id):
+    print(event.created_at, event.event_type, event.actor_id)
 ```
 
 Request and decide an approval:

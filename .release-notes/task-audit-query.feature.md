@@ -1,0 +1,1 @@
+- Added task-scoped audit event queries.
