@@ -5,15 +5,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
 
 from asynq_team_core.database import (
     DatabaseConnection,
     DatabaseRow,
+    connect_database,
     get_next_sequential_id,
     insert_event,
 )
 from asynq_team_core.events import Clock, create_event, format_event_time, utc_now
 from asynq_team_core.inbox import InboxItem, InboxItemType, create_inbox_item
+from asynq_team_core.paths import ProjectLayout
+from asynq_team_core.policy import CapabilityAuthorization, authorize_agent_capability
 from asynq_team_core.tasks import get_task
 
 
@@ -55,6 +59,14 @@ class CommentCreation:
     comment: Comment
     mentions: tuple[CommentMention, ...]
     inbox_items: tuple[InboxItem, ...]
+
+
+@dataclass(frozen=True)
+class AuthorizedCommentCreation:
+    """Result of an authorized comment creation attempt."""
+
+    authorization: CapabilityAuthorization | None
+    created: CommentCreation | None
 
 
 def create_task_comment(
@@ -146,6 +158,45 @@ def create_task_comment(
         mentions=created_mentions,
         inbox_items=inbox_items,
     )
+
+
+def create_authorized_task_comment(
+    database_path: Path,
+    layout: ProjectLayout,
+    task_id: str,
+    body: str,
+    author_type: str,
+    author_id: str,
+    mentions: tuple[str, ...] = (),
+    approver_id: str = "founder",
+    clock: Clock = utc_now,
+) -> AuthorizedCommentCreation:
+    """Create a task comment after enforcing agent comment.create capability."""
+    clean_task_id = _require_existing_task_id(database_path, task_id)
+    authorization = _authorize_agent_comment_creation(
+        database_path=database_path,
+        layout=layout,
+        task_id=clean_task_id,
+        author_type=author_type,
+        author_id=author_id,
+        approver_id=approver_id,
+        clock=clock,
+    )
+    if authorization is not None and authorization.approval_request is not None:
+        return AuthorizedCommentCreation(authorization=authorization, created=None)
+
+    with connect_database(database_path) as connection:
+        created = create_task_comment(
+            connection,
+            task_id=clean_task_id,
+            body=body,
+            author_type=author_type,
+            author_id=author_id,
+            mentions=mentions,
+            clock=clock,
+        )
+
+    return AuthorizedCommentCreation(authorization=authorization, created=created)
 
 
 def get_comment(connection: DatabaseConnection, comment_id: str) -> Comment | None:
@@ -267,6 +318,36 @@ def _require_existing_task(connection: DatabaseConnection, task_id: str) -> str:
     if get_task(connection, clean_task_id) is None:
         raise ValueError(f"Task not found: {clean_task_id}")
     return clean_task_id
+
+
+def _require_existing_task_id(database_path: Path, task_id: str) -> str:
+    with connect_database(database_path) as connection:
+        return _require_existing_task(connection, task_id)
+
+
+def _authorize_agent_comment_creation(
+    database_path: Path,
+    layout: ProjectLayout,
+    task_id: str,
+    author_type: str,
+    author_id: str,
+    approver_id: str,
+    clock: Clock,
+) -> CapabilityAuthorization | None:
+    if author_type != "agent":
+        return None
+
+    return authorize_agent_capability(
+        database_path=database_path,
+        layout=layout,
+        agent_id=author_id,
+        capability="comment.create",
+        reason=f"Create comment on task: {task_id}",
+        approver_id=approver_id,
+        subject_type="task",
+        subject_id=task_id,
+        clock=clock,
+    )
 
 
 def _dedupe_mentions(mentions: tuple[str, ...]) -> tuple[str, ...]:

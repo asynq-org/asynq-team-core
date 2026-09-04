@@ -1,0 +1,1 @@
+- Add authorized task comments that enforce agent `comment.create` capability.

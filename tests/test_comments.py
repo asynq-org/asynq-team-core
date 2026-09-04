@@ -2,9 +2,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+import yaml
 
+from asynq_team_core.approvals import list_approvals
 from asynq_team_core.comments import (
     CommentMentionStatus,
+    create_authorized_task_comment,
     create_task_comment,
     get_comment,
     list_comment_mentions,
@@ -12,6 +15,9 @@ from asynq_team_core.comments import (
 )
 from asynq_team_core.database import connect_database, initialize_database
 from asynq_team_core.inbox import InboxItemType, list_inbox_items
+from asynq_team_core.paths import create_project_directories, get_project_layout
+from asynq_team_core.policy import CapabilityDecision
+from asynq_team_core.project_files import seed_default_project_files
 from asynq_team_core.tasks import create_task
 
 
@@ -153,3 +159,126 @@ def test_list_comment_mentions_can_include_done_statuses(tmp_path: Path) -> None
         all_mentions = list_comment_mentions(connection, status=None)
 
     assert mentions == all_mentions
+
+
+def test_create_authorized_task_comment_allows_agent_comment(tmp_path: Path) -> None:
+    layout, task_id = _create_policy_workspace_with_task(tmp_path)
+
+    result = create_authorized_task_comment(
+        database_path=layout.database_path,
+        layout=layout,
+        task_id=task_id,
+        body="Please review.",
+        author_type="agent",
+        author_id="george",
+        mentions=("supervisor",),
+    )
+
+    assert result.authorization is not None
+    assert result.authorization.evaluation.decision is CapabilityDecision.ALLOW
+    assert result.created is not None
+    assert result.created.comment.id == "CMT-0001"
+    assert len(result.created.mentions) == 1
+
+
+def test_create_authorized_task_comment_requests_approval_when_gated(
+    tmp_path: Path,
+) -> None:
+    layout, task_id = _create_policy_workspace_with_task(tmp_path)
+    _replace_engineer_comment_create_policy(layout, "require_approval")
+
+    result = create_authorized_task_comment(
+        database_path=layout.database_path,
+        layout=layout,
+        task_id=task_id,
+        body="Please review.",
+        author_type="agent",
+        author_id="george",
+        mentions=("supervisor",),
+    )
+
+    assert result.authorization is not None
+    assert result.authorization.evaluation.decision is CapabilityDecision.REQUIRE_APPROVAL
+    assert result.authorization.approval_request is not None
+    assert result.authorization.approval_request.approval.subject_id == task_id
+    assert result.created is None
+
+    with connect_database(layout.database_path) as connection:
+        assert list_task_comments(connection, task_id) == []
+        assert list_comment_mentions(connection) == []
+        approvals = list_approvals(connection)
+
+    assert approvals == [result.authorization.approval_request.approval]
+
+
+def test_create_authorized_task_comment_rejects_denied_agent(tmp_path: Path) -> None:
+    layout, task_id = _create_policy_workspace_with_task(tmp_path)
+    _replace_engineer_comment_create_policy(layout, "deny")
+
+    with pytest.raises(PermissionError, match="denied for role"):
+        create_authorized_task_comment(
+            database_path=layout.database_path,
+            layout=layout,
+            task_id=task_id,
+            body="Please review.",
+            author_type="agent",
+            author_id="george",
+        )
+
+
+def test_create_authorized_task_comment_bypasses_policy_for_humans(tmp_path: Path) -> None:
+    layout, task_id = _create_workspace_with_task(tmp_path)
+
+    result = create_authorized_task_comment(
+        database_path=layout.database_path,
+        layout=layout,
+        task_id=task_id,
+        body="Please review.",
+        author_type="human",
+        author_id="founder",
+    )
+
+    assert result.authorization is None
+    assert result.created is not None
+    assert result.created.comment.id == "CMT-0001"
+
+
+def _create_workspace_with_task(tmp_path: Path):
+    layout = get_project_layout(tmp_path)
+    create_project_directories(layout)
+    initialize_database(layout.database_path)
+    with connect_database(layout.database_path) as connection:
+        task = create_task(
+            connection,
+            title="First task",
+            actor_type="human",
+            actor_id="founder",
+        )
+
+    return layout, task.id
+
+
+def _create_policy_workspace_with_task(tmp_path: Path):
+    layout = get_project_layout(tmp_path)
+    create_project_directories(layout)
+    seed_default_project_files(layout)
+    initialize_database(layout.database_path)
+    with connect_database(layout.database_path) as connection:
+        task = create_task(
+            connection,
+            title="First task",
+            actor_type="human",
+            actor_id="founder",
+        )
+
+    return layout, task.id
+
+
+def _replace_engineer_comment_create_policy(layout, target: str) -> None:
+    path = layout.policy_dir / "capabilities.yaml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    engineer = data["roles"]["engineer"]
+    for field in ("allow", "require_approval", "deny"):
+        engineer[field] = [item for item in engineer.get(field, []) if item != "comment.create"]
+    engineer.setdefault(target, []).append("comment.create")
+    path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
