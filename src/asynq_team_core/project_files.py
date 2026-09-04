@@ -148,6 +148,14 @@ denied_tools:
   - production.deploy
 runners:
   codex:
+    adapter: codex
+    working_directory: .
+    command_template:
+      - codex
+      - exec
+      - --model
+      - "{model}"
+      - "{work_packet}"
     allowed_models:
       - gpt-5-codex
 """,

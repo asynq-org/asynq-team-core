@@ -1,0 +1,1 @@
+- Add validated runner adapter command templates to project runner policy.

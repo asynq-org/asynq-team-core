@@ -12,6 +12,7 @@ from asynq_team_core.database import connect_database
 from asynq_team_core.events import Clock, utc_now
 from asynq_team_core.paths import ProjectLayout
 from asynq_team_core.policy import CapabilityAuthorization
+from asynq_team_core.runner_policy import load_runner_policy
 from asynq_team_core.runs import Run, RunStatus, get_run, update_run_status
 from asynq_team_core.tasks import Task, get_task
 
@@ -71,7 +72,15 @@ def prepare_run_work_packet(
     parsed_agent_manifest = _load_optional_agent_manifest(layout, run.agent_id, agent_manifest)
     rule_refs = parsed_agent_manifest.rule_refs if parsed_agent_manifest else ()
     rules = tuple(_read_rule_file(layout, rule_ref) for rule_ref in rule_refs)
-    body = _render_work_packet(run, task, brief, agent_manifest, parsed_agent_manifest, rules)
+    body = _render_work_packet(
+        layout,
+        run,
+        task,
+        brief,
+        agent_manifest,
+        parsed_agent_manifest,
+        rules,
+    )
     artifact = write_run_work_packet(
         layout=layout,
         artifact_dir_path=run.artifact_dir_path,
@@ -207,6 +216,7 @@ def _read_rule_file(layout: ProjectLayout, rule_ref: str) -> TextDocument:
 
 
 def _render_work_packet(
+    layout: ProjectLayout,
     run: Run,
     task: Task,
     brief: TextDocument | None,
@@ -223,12 +233,22 @@ def _render_work_packet(
         f"- Status: {run.status.value}",
     ]
     if parsed_agent_manifest is not None:
+        runner_policy = load_runner_policy(layout)
+        runner_config = runner_policy.adapters_by_runner.get(parsed_agent_manifest.runner.default)
         sections.extend(
             [
                 f"- Runner: {run.runner_id or parsed_agent_manifest.runner.default}",
                 f"- Model: {run.model or parsed_agent_manifest.runner.default_model}",
             ]
         )
+        if runner_config is not None and runner_config.command_template:
+            sections.extend(
+                [
+                    f"- Runner adapter: {runner_config.adapter}",
+                    f"- Runner cwd: {runner_config.working_directory}",
+                    f"- Runner command template: {' '.join(runner_config.command_template)}",
+                ]
+            )
         if run.requested_model:
             sections.append(f"- Requested model: {run.requested_model}")
         if parsed_agent_manifest.runner.max_run_budget_usd is not None:

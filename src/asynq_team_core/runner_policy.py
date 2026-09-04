@@ -18,6 +18,16 @@ class RunnerToolDecision(str, Enum):
 
 
 @dataclass(frozen=True)
+class RunnerAdapterConfig:
+    """Configured runner adapter metadata."""
+
+    name: str
+    adapter: str
+    command_template: tuple[str, ...]
+    working_directory: str
+
+
+@dataclass(frozen=True)
 class RunnerPolicy:
     """Parsed runner tool policy."""
 
@@ -26,6 +36,7 @@ class RunnerPolicy:
     denied_tools: frozenset[str]
     allowed_runners: frozenset[str]
     allowed_models_by_runner: dict[str, frozenset[str]]
+    adapters_by_runner: dict[str, RunnerAdapterConfig]
 
 
 @dataclass(frozen=True)
@@ -52,6 +63,7 @@ def load_runner_policy(layout: ProjectLayout) -> RunnerPolicy:
         denied_tools=frozenset(_parse_tool_list(data.get("denied_tools", ()), "denied_tools")),
         allowed_runners=frozenset(_parse_runner_mapping(data.get("runners", {}))),
         allowed_models_by_runner=_parse_allowed_models_by_runner(data.get("runners", {})),
+        adapters_by_runner=_parse_adapters_by_runner(data.get("runners", {})),
     )
 
 
@@ -114,6 +126,28 @@ def _parse_allowed_models_by_runner(value: Any) -> dict[str, frozenset[str]]:
     return models_by_runner
 
 
+def _parse_adapters_by_runner(value: Any) -> dict[str, RunnerAdapterConfig]:
+    if not isinstance(value, dict):
+        raise TypeError("Runner policy runners must be a mapping.")
+
+    adapters: dict[str, RunnerAdapterConfig] = {}
+    for runner, runner_data in value.items():
+        clean_runner = _require_non_empty(runner, "Runner policy runner name")
+        if not isinstance(runner_data, dict):
+            raise TypeError(f"Runner policy runner must be a mapping: {clean_runner}")
+        adapters[clean_runner] = RunnerAdapterConfig(
+            name=clean_runner,
+            adapter=_get_str(runner_data, "adapter", clean_runner),
+            command_template=_parse_tool_list(
+                runner_data.get("command_template", ()),
+                "command_template",
+            ),
+            working_directory=_get_str(runner_data, "working_directory", "."),
+        )
+
+    return adapters
+
+
 def _load_yaml_mapping(path: Path, document_name: str) -> dict[str, Any]:
     if not path.is_file():
         raise ValueError(f"{document_name} not found: {path}")
@@ -130,6 +164,11 @@ def _require_non_empty(value: str, field_name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{field_name} must be a non-empty string.")
     return value.strip()
+
+
+def _get_str(data: dict[str, Any], field_name: str, default: str) -> str:
+    value = data.get(field_name, default)
+    return _require_non_empty(value, f"Runner policy {field_name}")
 
 
 def _ensure_child_path(parent: Path, child: Path) -> None:

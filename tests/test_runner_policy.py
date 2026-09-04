@@ -23,6 +23,15 @@ def test_load_runner_policy_reads_default_tools(tmp_path: Path) -> None:
     assert "shell.destructive" in policy.denied_tools
     assert "codex" in policy.allowed_runners
     assert policy.allowed_models_by_runner["codex"] == frozenset({"gpt-5-codex"})
+    assert policy.adapters_by_runner["codex"].adapter == "codex"
+    assert policy.adapters_by_runner["codex"].working_directory == "."
+    assert policy.adapters_by_runner["codex"].command_template == (
+        "codex",
+        "exec",
+        "--model",
+        "{model}",
+        "{work_packet}",
+    )
 
 
 def test_evaluate_runner_tool_allows_default_tool(tmp_path: Path) -> None:
@@ -70,6 +79,17 @@ def test_load_runner_policy_rejects_invalid_lists(tmp_path: Path) -> None:
     path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
 
     with pytest.raises(TypeError, match="Runner policy allowed_tools must be a list"):
+        load_runner_policy(layout)
+
+
+def test_load_runner_policy_rejects_invalid_command_template(tmp_path: Path) -> None:
+    layout = _create_workspace(tmp_path)
+    path = layout.policy_dir / "runners.yaml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    data["runners"]["codex"]["command_template"] = "codex exec"
+    path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(TypeError, match="Runner policy command_template must be a list"):
         load_runner_policy(layout)
 
 

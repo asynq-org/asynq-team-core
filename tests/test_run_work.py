@@ -33,6 +33,8 @@ def test_prepare_run_work_packet_writes_context_and_updates_status(tmp_path: Pat
     assert "Build the first task." in body
     assert "- Runner: codex" in body
     assert "- Model: gpt-5-codex" in body
+    assert "- Runner adapter: codex" in body
+    assert "- Runner command template: codex exec --model {model} {work_packet}" in body
     assert "- Max run budget USD: 5" in body
     assert "### .team/rules/engineering.md" in body
 
