@@ -21,6 +21,8 @@ def test_load_runner_policy_reads_default_tools(tmp_path: Path) -> None:
     assert "shell.test" in policy.allowed_tools
     assert "codex.runner" in policy.allowed_tools
     assert "shell.destructive" in policy.denied_tools
+    assert "codex" in policy.allowed_runners
+    assert policy.allowed_models_by_runner["codex"] == frozenset({"gpt-5-codex"})
 
 
 def test_evaluate_runner_tool_allows_default_tool(tmp_path: Path) -> None:

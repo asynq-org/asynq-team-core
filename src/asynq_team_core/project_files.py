@@ -146,6 +146,10 @@ allowed_tools:
 denied_tools:
   - shell.destructive
   - production.deploy
+runners:
+  codex:
+    allowed_models:
+      - gpt-5-codex
 """,
         ),
         ProjectFileTemplate(
@@ -154,6 +158,13 @@ denied_tools:
 display_name: EA
 role: ea
 mission: Manage intake, inbox hygiene, summaries, and approval requests.
+runner:
+  default: codex
+  default_model: gpt-5-codex
+  allowed_models:
+    - gpt-5-codex
+  can_request_model_change: true
+  max_run_budget_usd: 2
 rule_refs:
   - rules/company.md
   - rules/security.md
@@ -175,6 +186,13 @@ display_name: George
 role: engineer
 mission: Build implementation changes with tests and clear audit trails.
 supervisor: supervisor
+runner:
+  default: codex
+  default_model: gpt-5-codex
+  allowed_models:
+    - gpt-5-codex
+  can_request_model_change: true
+  max_run_budget_usd: 5
 rule_refs:
   - rules/company.md
   - rules/engineering.md
@@ -203,6 +221,13 @@ approvals:
 display_name: Supervisor
 role: supervisor
 mission: Review plans, diffs, risk, audit trails, and final recommendations.
+runner:
+  default: codex
+  default_model: gpt-5-codex
+  allowed_models:
+    - gpt-5-codex
+  can_request_model_change: true
+  max_run_budget_usd: 3
 rule_refs:
   - rules/company.md
   - rules/engineering.md

@@ -31,6 +31,8 @@ def test_prepare_run_work_packet_writes_context_and_updates_status(tmp_path: Pat
     assert "# Run RUN-0001 Work Packet" in body
     assert "- Title: First task" in body
     assert "Build the first task." in body
+    assert "- Runner: codex" in body
+    assert "- Model: gpt-5-codex" in body
     assert "### .team/rules/engineering.md" in body
 
 
@@ -79,7 +81,19 @@ def test_prepare_run_work_packet_can_overwrite_existing_packet(tmp_path: Path) -
 def test_prepare_run_work_packet_rejects_rule_paths_outside_rules_dir(tmp_path: Path) -> None:
     layout, run_id = _create_workspace_run(tmp_path)
     (layout.agents_dir / "george.yaml").write_text(
-        "id: george\nrule_refs:\n  - ../policy/approvals.yaml\n",
+        """id: george
+display_name: George
+role: engineer
+mission: Build implementation changes.
+runner:
+  default: codex
+  default_model: gpt-5-codex
+  allowed_models:
+    - gpt-5-codex
+  can_request_model_change: true
+rule_refs:
+  - ../policy/approvals.yaml
+""",
         encoding="utf-8",
     )
 

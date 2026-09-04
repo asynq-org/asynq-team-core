@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
+from asynq_team_core.agent_manifests import AgentManifest, load_agent_manifest
 from asynq_team_core.artifact_policy import authorize_run_artifact_creation
 from asynq_team_core.artifacts import ArtifactWrite, write_run_work_packet
 from asynq_team_core.database import connect_database
@@ -43,6 +43,7 @@ class RunWorkPacket:
     artifact: ArtifactWrite
     brief: TextDocument | None
     agent_manifest: TextDocument | None
+    parsed_agent_manifest: AgentManifest | None
     rules: tuple[TextDocument, ...]
 
 
@@ -67,9 +68,10 @@ def prepare_run_work_packet(
     run, task = _load_startable_run(database_path, run_id)
     brief = _read_optional_workspace_file(layout, task.brief_artifact_path)
     agent_manifest = _read_agent_manifest(layout, run.agent_id)
-    rule_refs = _extract_rule_refs(agent_manifest.body if agent_manifest else "")
+    parsed_agent_manifest = _load_optional_agent_manifest(layout, run.agent_id, agent_manifest)
+    rule_refs = parsed_agent_manifest.rule_refs if parsed_agent_manifest else ()
     rules = tuple(_read_rule_file(layout, rule_ref) for rule_ref in rule_refs)
-    body = _render_work_packet(run, task, brief, agent_manifest, rules)
+    body = _render_work_packet(run, task, brief, agent_manifest, parsed_agent_manifest, rules)
     artifact = write_run_work_packet(
         layout=layout,
         artifact_dir_path=run.artifact_dir_path,
@@ -93,6 +95,7 @@ def prepare_run_work_packet(
         artifact=artifact,
         brief=brief,
         agent_manifest=agent_manifest,
+        parsed_agent_manifest=parsed_agent_manifest,
         rules=rules,
     )
 
@@ -181,28 +184,14 @@ def _read_agent_manifest(layout: ProjectLayout, agent_id: str) -> TextDocument |
     )
 
 
-def _extract_rule_refs(manifest_body: str) -> tuple[str, ...]:
-    if not manifest_body:
-        return ()
-
-    yaml = _require_yaml()
-    data = yaml.safe_load(manifest_body) or {}
-    if not isinstance(data, dict):
-        raise TypeError("Agent manifest root must be a mapping.")
-
-    rule_refs = data.get("rule_refs", ())
-    if rule_refs is None:
-        return ()
-    if not isinstance(rule_refs, list):
-        raise TypeError("Agent manifest rule_refs must be a list.")
-
-    refs: list[str] = []
-    for rule_ref in rule_refs:
-        if not isinstance(rule_ref, str) or not rule_ref.strip():
-            raise ValueError("Agent manifest rule_refs must contain non-empty strings.")
-        refs.append(rule_ref.strip())
-
-    return tuple(refs)
+def _load_optional_agent_manifest(
+    layout: ProjectLayout,
+    agent_id: str,
+    agent_manifest: TextDocument | None,
+) -> AgentManifest | None:
+    if agent_manifest is None:
+        return None
+    return load_agent_manifest(layout, agent_id)
 
 
 def _read_rule_file(layout: ProjectLayout, rule_ref: str) -> TextDocument:
@@ -222,6 +211,7 @@ def _render_work_packet(
     task: Task,
     brief: TextDocument | None,
     agent_manifest: TextDocument | None,
+    parsed_agent_manifest: AgentManifest | None,
     rules: tuple[TextDocument, ...],
 ) -> str:
     sections = [
@@ -231,13 +221,29 @@ def _render_work_packet(
         f"- Task: {run.task_id}",
         f"- Agent: {run.agent_id}",
         f"- Status: {run.status.value}",
-        "",
-        "## Task",
-        f"- ID: {task.id}",
-        f"- Title: {task.title}",
-        f"- Priority: {task.priority}",
-        f"- Status: {task.status.value}",
     ]
+    if parsed_agent_manifest is not None:
+        sections.extend(
+            [
+                f"- Runner: {parsed_agent_manifest.runner.default}",
+                f"- Model: {parsed_agent_manifest.runner.default_model}",
+            ]
+        )
+        if parsed_agent_manifest.runner.max_run_budget_usd is not None:
+            sections.append(
+                f"- Max run budget USD: {parsed_agent_manifest.runner.max_run_budget_usd:g}"
+            )
+
+    sections.extend(
+        [
+            "",
+            "## Task",
+            f"- ID: {task.id}",
+            f"- Title: {task.title}",
+            f"- Priority: {task.priority}",
+            f"- Status: {task.status.value}",
+        ]
+    )
 
     if task.assignee_id:
         sections.append(f"- Assignee: {task.assignee_id}")
@@ -283,12 +289,3 @@ def _ensure_child_path(parent: Path, child: Path) -> None:
         child_resolved.relative_to(parent_resolved)
     except ValueError as exc:
         raise ValueError(f"Path escapes parent directory: {child}") from exc
-
-
-def _require_yaml() -> Any:
-    try:
-        import yaml
-    except ImportError as exc:
-        raise RuntimeError("PyYAML is required to read Asynq Team agent manifests.") from exc
-
-    return yaml

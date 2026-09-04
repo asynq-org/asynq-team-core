@@ -77,7 +77,7 @@ def test_evaluate_agent_capability_rejects_missing_agent_manifest(tmp_path: Path
 def test_evaluate_agent_capability_rejects_agent_path_escape(tmp_path: Path) -> None:
     layout = _create_workspace(tmp_path)
 
-    with pytest.raises(ValueError, match="Policy path escapes parent directory"):
+    with pytest.raises(ValueError, match="Agent manifest path escapes parent directory"):
         evaluate_agent_capability(layout, "../policy/capabilities", "repo.read")
 
 

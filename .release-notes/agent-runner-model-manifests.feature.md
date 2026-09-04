@@ -1,0 +1,1 @@
+- Add per-agent runner and model settings to default manifests with policy-backed validation.

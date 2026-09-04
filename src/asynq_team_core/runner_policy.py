@@ -24,6 +24,8 @@ class RunnerPolicy:
     version: int
     allowed_tools: frozenset[str]
     denied_tools: frozenset[str]
+    allowed_runners: frozenset[str]
+    allowed_models_by_runner: dict[str, frozenset[str]]
 
 
 @dataclass(frozen=True)
@@ -48,6 +50,8 @@ def load_runner_policy(layout: ProjectLayout) -> RunnerPolicy:
         version=version,
         allowed_tools=frozenset(_parse_tool_list(data.get("allowed_tools", ()), "allowed_tools")),
         denied_tools=frozenset(_parse_tool_list(data.get("denied_tools", ()), "denied_tools")),
+        allowed_runners=frozenset(_parse_runner_mapping(data.get("runners", {}))),
+        allowed_models_by_runner=_parse_allowed_models_by_runner(data.get("runners", {})),
     )
 
 
@@ -87,6 +91,27 @@ def _parse_tool_list(value: Any, field_name: str) -> tuple[str, ...]:
         tools.append(_require_non_empty(tool, f"Runner policy {field_name} entry"))
 
     return tuple(tools)
+
+
+def _parse_runner_mapping(value: Any) -> tuple[str, ...]:
+    if not isinstance(value, dict):
+        raise TypeError("Runner policy runners must be a mapping.")
+    return tuple(_require_non_empty(runner, "Runner policy runner name") for runner in value)
+
+
+def _parse_allowed_models_by_runner(value: Any) -> dict[str, frozenset[str]]:
+    if not isinstance(value, dict):
+        raise TypeError("Runner policy runners must be a mapping.")
+
+    models_by_runner: dict[str, frozenset[str]] = {}
+    for runner, runner_data in value.items():
+        clean_runner = _require_non_empty(runner, "Runner policy runner name")
+        if not isinstance(runner_data, dict):
+            raise TypeError(f"Runner policy runner must be a mapping: {clean_runner}")
+        models = _parse_tool_list(runner_data.get("allowed_models", ()), "allowed_models")
+        models_by_runner[clean_runner] = frozenset(models)
+
+    return models_by_runner
 
 
 def _load_yaml_mapping(path: Path, document_name: str) -> dict[str, Any]:

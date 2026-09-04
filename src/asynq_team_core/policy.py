@@ -7,6 +7,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from asynq_team_core.agent_manifests import load_agent_manifest
 from asynq_team_core.approvals import (
     ApprovalRequest,
     ApprovalStatus,
@@ -210,14 +211,7 @@ def _parse_capability_list(value: Any, role: str, field: str) -> tuple[str, ...]
 
 
 def _load_agent_role(layout: ProjectLayout, agent_id: str) -> str:
-    path = layout.agents_dir / f"{agent_id}.yaml"
-    _ensure_child_path(layout.agents_dir, path)
-    data = _load_yaml_mapping(path, "Agent manifest")
-    role = data.get("role")
-    if not isinstance(role, str) or not role.strip():
-        raise ValueError(f"Agent manifest role must be a non-empty string: {agent_id}")
-
-    return role.strip()
+    return load_agent_manifest(layout, agent_id).role
 
 
 def _load_yaml_mapping(path: Path, document_name: str) -> dict[str, Any]:
