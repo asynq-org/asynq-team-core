@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from asynq_team_core.config import TeamConfig
-from asynq_team_core.project import initialize_project
+from asynq_team_core.project import ensure_runtime_gitignore_entries, initialize_project
 
 
 def test_initialize_project_creates_directories_and_config(tmp_path: Path) -> None:
@@ -25,6 +25,7 @@ def test_initialize_project_creates_directories_and_config(tmp_path: Path) -> No
     assert result.layout.policy_dir.joinpath("capabilities.yaml").is_file()
     assert result.layout.policy_dir.joinpath("approvals.yaml").is_file()
     assert result.created_default_files
+    assert ".team/team.db" in tmp_path.joinpath(".gitignore").read_text(encoding="utf-8")
     assert writes[0][0] == result.layout.config_path
     assert writes[0][1].project.name == "Example"
 
@@ -96,3 +97,26 @@ def test_initialize_project_can_overwrite_config(tmp_path: Path) -> None:
     assert result.created_config is True
     assert writes[0][0] == result.layout.config_path
     assert writes[0][1].project.name == "Example"
+
+
+def test_ensure_runtime_gitignore_entries_preserves_existing_content(tmp_path: Path) -> None:
+    gitignore_path = tmp_path / ".gitignore"
+    gitignore_path.write_text("dist/\n.team/team.db\n", encoding="utf-8")
+
+    updated = ensure_runtime_gitignore_entries(tmp_path)
+
+    body = gitignore_path.read_text(encoding="utf-8")
+    assert updated is True
+    assert body.startswith("dist/\n.team/team.db\n")
+    assert body.count(".team/team.db") == 1
+    assert ".team/backups/*.db" in body
+
+
+def test_ensure_runtime_gitignore_entries_is_idempotent(tmp_path: Path) -> None:
+    ensure_runtime_gitignore_entries(tmp_path)
+    body = tmp_path.joinpath(".gitignore").read_text(encoding="utf-8")
+
+    updated = ensure_runtime_gitignore_entries(tmp_path)
+
+    assert updated is False
+    assert tmp_path.joinpath(".gitignore").read_text(encoding="utf-8") == body

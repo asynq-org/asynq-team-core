@@ -10,6 +10,11 @@ from asynq_team_core.project_files import seed_default_project_files
 
 ConfigWriter = Callable[[Path, TeamConfig], None]
 
+RUNTIME_GITIGNORE_ENTRIES = (
+    ".team/team.db",
+    ".team/backups/*.db",
+)
+
 
 @dataclass(frozen=True)
 class ProjectInitialization:
@@ -45,9 +50,30 @@ def initialize_project(
         )
 
     created_default_files = seed_default_project_files(layout, overwrite=overwrite_defaults)
+    ensure_runtime_gitignore_entries(layout.workspace)
 
     return ProjectInitialization(
         layout=layout,
         created_config=should_write_config,
         created_default_files=created_default_files,
     )
+
+
+def ensure_runtime_gitignore_entries(workspace: Path) -> bool:
+    """Ensure local runtime SQLite files are ignored by the workspace git repo."""
+    gitignore_path = workspace / ".gitignore"
+    existing_body = gitignore_path.read_text(encoding="utf-8") if gitignore_path.exists() else ""
+    existing_lines = set(existing_body.splitlines())
+    missing_entries = [entry for entry in RUNTIME_GITIGNORE_ENTRIES if entry not in existing_lines]
+    if not missing_entries:
+        return False
+
+    lines_to_append = ["# Asynq Team local runtime state", *missing_entries]
+    separator = "\n" if existing_body and not existing_body.endswith("\n") else ""
+    prefix = "\n" if existing_body else ""
+    appended_body = "\n".join(lines_to_append)
+    gitignore_path.write_text(
+        f"{existing_body}{separator}{prefix}{appended_body}\n",
+        encoding="utf-8",
+    )
+    return True

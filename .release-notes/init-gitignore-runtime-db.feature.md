@@ -1,0 +1,1 @@
+- Add runtime SQLite database files to workspace gitignore during initialization.
