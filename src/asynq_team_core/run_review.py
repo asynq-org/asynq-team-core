@@ -15,7 +15,7 @@ from asynq_team_core.comments import (
 from asynq_team_core.database import connect_database
 from asynq_team_core.events import Clock, utc_now
 from asynq_team_core.paths import ProjectLayout
-from asynq_team_core.policy import CapabilityAuthorization
+from asynq_team_core.policy import CapabilityAuthorization, authorize_agent_capability
 from asynq_team_core.runs import Run, RunStatus, get_run, update_run_status
 from asynq_team_core.tasks import Task, get_task
 
@@ -121,8 +121,20 @@ def review_authorized_run(
     approver_id: str = "founder",
     clock: Clock = utc_now,
 ) -> AuthorizedRunReview:
-    """Review a run after enforcing agent comment.create capability."""
+    """Review a run after enforcing agent review and comment capabilities."""
     run, task = _load_reviewable_run(database_path, run_id)
+    authorization = _authorize_agent_review_creation(
+        database_path=database_path,
+        layout=layout,
+        run_id=run.id,
+        actor_type=actor_type,
+        actor_id=actor_id,
+        approver_id=approver_id,
+        clock=clock,
+    )
+    if authorization is not None and authorization.approval_request is not None:
+        return AuthorizedRunReview(authorization=authorization, review=None)
+
     authorization = authorize_task_comment_creation(
         database_path=database_path,
         layout=layout,
@@ -148,6 +160,31 @@ def review_authorized_run(
     )
 
     return AuthorizedRunReview(authorization=authorization, review=review)
+
+
+def _authorize_agent_review_creation(
+    database_path: Path,
+    layout: ProjectLayout,
+    run_id: str,
+    actor_type: str,
+    actor_id: str,
+    approver_id: str,
+    clock: Clock,
+) -> CapabilityAuthorization | None:
+    if actor_type != "agent":
+        return None
+
+    return authorize_agent_capability(
+        database_path=database_path,
+        layout=layout,
+        agent_id=actor_id,
+        capability="review.create",
+        reason=f"Create review for run: {run_id}",
+        approver_id=approver_id,
+        subject_type="run",
+        subject_id=run_id,
+        clock=clock,
+    )
 
 
 def _load_reviewable_run(database_path: Path, run_id: str) -> tuple[Run, Task]:

@@ -1,0 +1,1 @@
+- Enforce agent `review.create` capability in authorized run review workflows.

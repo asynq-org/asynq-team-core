@@ -26,7 +26,7 @@ It provides the domain and persistence building blocks used by the CLI and futur
 - task run start workflow that prepares work context in one call;
 - run work packets that collect task, agent, and rule context;
 - authorized run result submission for supervisor review;
-- supervisor review artifacts and approve/return run decisions;
+- authorized supervisor review artifacts and approve/return run decisions;
 - local doctor diagnostics for workspace setup and database migrations;
 - local SQLite database backups;
 - capability policy loading and agent capability evaluation;

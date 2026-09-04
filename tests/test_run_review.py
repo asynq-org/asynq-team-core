@@ -118,6 +118,52 @@ def test_review_authorized_run_requests_comment_approval_when_gated(
     assert not (layout.runs_dir / "george" / run_id / "review.md").exists()
 
 
+def test_review_authorized_run_requests_review_approval_when_gated(
+    tmp_path: Path,
+) -> None:
+    layout, run_id = _create_policy_submitted_run(tmp_path)
+    _replace_role_capability_policy(layout, "supervisor", "review.create", "require_approval")
+
+    result = review_authorized_run(
+        database_path=layout.database_path,
+        layout=layout,
+        run_id=run_id,
+        decision=RunReviewDecision.APPROVE,
+        body_md="Looks ready.",
+        actor_type="agent",
+        actor_id="supervisor",
+    )
+
+    with connect_database(layout.database_path) as connection:
+        stored_run = get_run(connection, run_id)
+        approvals = list_approvals(connection)
+
+    assert result.authorization is not None
+    assert result.authorization.evaluation.capability == "review.create"
+    assert result.authorization.approval_request is not None
+    assert result.review is None
+    assert stored_run is not None
+    assert stored_run.status is RunStatus.WAITING_FOR_REVIEW
+    assert approvals == [result.authorization.approval_request.approval]
+    assert not (layout.runs_dir / "george" / run_id / "review.md").exists()
+
+
+def test_review_authorized_run_rejects_denied_review_capability(tmp_path: Path) -> None:
+    layout, run_id = _create_policy_submitted_run(tmp_path)
+    _replace_role_capability_policy(layout, "supervisor", "review.create", "deny")
+
+    with pytest.raises(PermissionError, match="denied for role"):
+        review_authorized_run(
+            database_path=layout.database_path,
+            layout=layout,
+            run_id=run_id,
+            decision=RunReviewDecision.APPROVE,
+            body_md="Looks ready.",
+            actor_type="agent",
+            actor_id="supervisor",
+        )
+
+
 def _create_submitted_run(tmp_path: Path) -> tuple[ProjectLayout, str]:
     layout, run_id = _create_run(tmp_path)
     with connect_database(layout.database_path) as connection:
@@ -190,10 +236,19 @@ def _create_policy_submitted_run(tmp_path: Path) -> tuple[ProjectLayout, str]:
 
 
 def _replace_role_comment_create_policy(layout: ProjectLayout, role: str, target: str) -> None:
+    _replace_role_capability_policy(layout, role, "comment.create", target)
+
+
+def _replace_role_capability_policy(
+    layout: ProjectLayout,
+    role: str,
+    capability: str,
+    target: str,
+) -> None:
     path = layout.policy_dir / "capabilities.yaml"
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     role_policy = data["roles"][role]
     for field in ("allow", "require_approval", "deny"):
-        role_policy[field] = [item for item in role_policy.get(field, []) if item != "comment.create"]
-    role_policy.setdefault(target, []).append("comment.create")
+        role_policy[field] = [item for item in role_policy.get(field, []) if item != capability]
+    role_policy.setdefault(target, []).append(capability)
     path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
