@@ -45,6 +45,15 @@ class Run:
     updated_at: str
 
 
+NEXT_ACTIONABLE_RUN_STATUSES = (
+    RunStatus.CREATED,
+    RunStatus.CLAIMED,
+    RunStatus.PLANNING,
+    RunStatus.WORKING,
+    RunStatus.RETURNED,
+)
+
+
 def create_run(
     connection: DatabaseConnection,
     task_id: str,
@@ -150,6 +159,33 @@ def list_runs(
     ).fetchall()
 
     return [_run_from_row(row) for row in rows]
+
+
+def get_next_agent_run(
+    connection: DatabaseConnection,
+    agent_id: str,
+    statuses: tuple[RunStatus, ...] = NEXT_ACTIONABLE_RUN_STATUSES,
+) -> Run | None:
+    """Return the oldest actionable run for an agent."""
+    clean_agent_id = _require_non_empty(agent_id, "agent_id")
+    if not statuses:
+        raise ValueError("statuses must not be empty.")
+
+    placeholders = ", ".join("?" for _status in statuses)
+    rows = connection.execute(
+        f"""
+        select * from runs
+        where agent_id = ?
+        and status in ({placeholders})
+        order by created_at asc, id asc
+        limit 1
+        """,
+        (clean_agent_id, *(status.value for status in statuses)),
+    ).fetchall()
+
+    if not rows:
+        return None
+    return _run_from_row(rows[0])
 
 
 def update_run_status(
