@@ -1,0 +1,1 @@
+- Persist the resolved runner and model on new agent run records.

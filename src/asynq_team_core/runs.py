@@ -41,6 +41,9 @@ class Run:
     agent_id: str
     status: RunStatus
     artifact_dir_path: str | None
+    runner_id: str | None
+    model: str | None
+    requested_model: str | None
     created_at: str
     updated_at: str
 
@@ -62,6 +65,9 @@ def create_run(
     actor_id: str,
     run_id: str | None = None,
     artifact_dir_path: str | None = None,
+    runner_id: str | None = None,
+    model: str | None = None,
+    requested_model: str | None = None,
     clock: Clock = utc_now,
 ) -> Run:
     """Create a run record for an existing task and record an audit event."""
@@ -74,6 +80,9 @@ def create_run(
         agent_id=clean_agent_id,
         status=RunStatus.CREATED,
         artifact_dir_path=artifact_dir_path,
+        runner_id=_clean_optional(runner_id, "runner_id"),
+        model=_clean_optional(model, "model"),
+        requested_model=_clean_optional(requested_model, "requested_model"),
         created_at=created_at,
         updated_at=created_at,
     )
@@ -86,9 +95,12 @@ def create_run(
             agent_id,
             status,
             artifact_dir_path,
+            runner_id,
+            model,
+            requested_model,
             created_at,
             updated_at
-        ) values (?, ?, ?, ?, ?, ?, ?)
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             run.id,
@@ -96,6 +108,9 @@ def create_run(
             run.agent_id,
             run.status.value,
             run.artifact_dir_path,
+            run.runner_id,
+            run.model,
+            run.requested_model,
             run.created_at,
             run.updated_at,
         ),
@@ -112,6 +127,9 @@ def create_run(
                 "task_id": run.task_id,
                 "agent_id": run.agent_id,
                 "artifact_dir_path": run.artifact_dir_path,
+                "runner_id": run.runner_id,
+                "model": run.model,
+                "requested_model": run.requested_model,
             },
             clock=lambda: _parse_event_time(created_at),
         ),
@@ -244,6 +262,9 @@ def _run_from_row(row: DatabaseRow) -> Run:
         agent_id=row["agent_id"],
         status=RunStatus(row["status"]),
         artifact_dir_path=row["artifact_dir_path"],
+        runner_id=row["runner_id"],
+        model=row["model"],
+        requested_model=row["requested_model"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
@@ -253,6 +274,12 @@ def _require_non_empty(value: str, field_name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{field_name} must be a non-empty string.")
     return value.strip()
+
+
+def _clean_optional(value: str | None, field_name: str) -> str | None:
+    if value is None:
+        return None
+    return _require_non_empty(value, field_name)
 
 
 def _parse_event_time(value: str) -> datetime:

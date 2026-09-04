@@ -33,6 +33,8 @@ def test_create_run_persists_run_and_event(tmp_path: Path) -> None:
             actor_type="human",
             actor_id="founder",
             artifact_dir_path=".team/runs/george/RUN-0001",
+            runner_id="codex",
+            model="gpt-5-codex",
             clock=lambda: datetime(2026, 9, 2, 12, 30, 0, tzinfo=UTC),
         )
         loaded = get_run(connection, run.id)
@@ -43,6 +45,8 @@ def test_create_run_persists_run_and_event(tmp_path: Path) -> None:
 
     assert run.id == "RUN-0001"
     assert run.status is RunStatus.CREATED
+    assert run.runner_id == "codex"
+    assert run.model == "gpt-5-codex"
     assert loaded == run
     assert event is not None
 

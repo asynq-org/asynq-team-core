@@ -38,6 +38,7 @@ def start_task_run(
     agent_id: str,
     actor_type: str,
     actor_id: str,
+    requested_model: str | None = None,
     clock: Clock = utc_now,
 ) -> StartedTaskRun:
     """Create an agent run for a task and prepare its local work packet."""
@@ -48,6 +49,7 @@ def start_task_run(
         agent_id=agent_id,
         actor_type=actor_type,
         actor_id=actor_id,
+        requested_model=requested_model,
         clock=clock,
     )
     work_packet = prepare_run_work_packet(
@@ -70,6 +72,7 @@ def start_authorized_task_run(
     actor_type: str,
     actor_id: str,
     approver_id: str = "founder",
+    requested_model: str | None = None,
     clock: Clock = utc_now,
 ) -> AuthorizedStartedTaskRun:
     """Create a task run after enforcing agent artifact.create capability."""
@@ -93,6 +96,7 @@ def start_authorized_task_run(
         agent_id=agent_id,
         actor_type=actor_type,
         actor_id=actor_id,
+        requested_model=requested_model,
         clock=clock,
     )
 

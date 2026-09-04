@@ -225,10 +225,12 @@ def _render_work_packet(
     if parsed_agent_manifest is not None:
         sections.extend(
             [
-                f"- Runner: {parsed_agent_manifest.runner.default}",
-                f"- Model: {parsed_agent_manifest.runner.default_model}",
+                f"- Runner: {run.runner_id or parsed_agent_manifest.runner.default}",
+                f"- Model: {run.model or parsed_agent_manifest.runner.default_model}",
             ]
         )
+        if run.requested_model:
+            sections.append(f"- Requested model: {run.requested_model}")
         if parsed_agent_manifest.runner.max_run_budget_usd is not None:
             sections.append(
                 f"- Max run budget USD: {parsed_agent_manifest.runner.max_run_budget_usd:g}"

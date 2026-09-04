@@ -193,6 +193,18 @@ MIGRATIONS = (
             on tasks (parent_task_id, updated_at);
         """,
     ),
+    Migration(
+        version=8,
+        name="add_run_runner_model",
+        sql="""
+        alter table runs add column runner_id text;
+        alter table runs add column model text;
+        alter table runs add column requested_model text;
+
+        create index if not exists idx_runs_runner_model
+            on runs (runner_id, model);
+        """,
+    ),
 )
 
 
