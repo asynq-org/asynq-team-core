@@ -18,6 +18,7 @@ It provides the domain and persistence building blocks used by the CLI and futur
 - project initialization for `.team/` workspaces;
 - local SQLite database setup and migrations;
 - task records and Markdown task briefs;
+- linked follow-up tasks for scoped future improvements;
 - task status updates;
 - task comments and mentions;
 - agent run records and artifact directories;
@@ -75,6 +76,25 @@ created = create_task_with_brief(
 
 print(created.task.id)
 print(created.brief.relative_path)
+```
+
+Create a linked follow-up task:
+
+```python
+from asynq_team_core.task_service import create_follow_up_task
+
+follow_up = create_follow_up_task(
+    database_path=initialization.layout.database_path,
+    layout=initialization.layout,
+    parent_task_id=created.task.id,
+    title="Document review checklist",
+    brief_md="Capture the checklist as a future scoped improvement.",
+    actor_type="agent",
+    actor_id="george",
+)
+
+print(follow_up.task.id)
+print(follow_up.task.parent_task_id)
 ```
 
 Update task status:

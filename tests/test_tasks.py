@@ -12,6 +12,7 @@ from asynq_team_core.tasks import (
     TaskStatus,
     create_task,
     get_task,
+    list_follow_up_tasks,
     list_tasks,
     update_task_status,
 )
@@ -25,7 +26,7 @@ def test_initialize_database_applies_task_migration(tmp_path: Path) -> None:
     with connect_database(database_path) as connection:
         versions = get_applied_migration_versions(connection)
 
-    assert versions == {1, 2, 3, 4, 5, 6}
+    assert versions == {1, 2, 3, 4, 5, 6, 7}
 
 
 def test_create_task_persists_task_and_event(tmp_path: Path) -> None:
@@ -66,6 +67,30 @@ def test_create_task_can_use_preallocated_id(tmp_path: Path) -> None:
         )
 
     assert task.id == "TASK-0042"
+
+
+def test_create_task_can_link_parent_task(tmp_path: Path) -> None:
+    database_path = tmp_path / "team.db"
+    initialize_database(database_path)
+
+    with connect_database(database_path) as connection:
+        parent = create_task(
+            connection,
+            title="Parent task",
+            actor_type="human",
+            actor_id="founder",
+        )
+        follow_up = create_task(
+            connection,
+            title="Follow-up task",
+            actor_type="agent",
+            actor_id="george",
+            parent_task_id=parent.id,
+        )
+        follow_ups = list_follow_up_tasks(connection, parent.id)
+
+    assert follow_up.parent_task_id == parent.id
+    assert follow_ups == [follow_up]
 
 
 def test_list_tasks_filters_by_status(tmp_path: Path) -> None:

@@ -33,7 +33,7 @@ def test_create_database_backup_writes_snapshot_and_event(tmp_path: Path) -> Non
     assert backup.path.is_file()
     assert backup.size_bytes > 0
     assert event is not None
-    assert len(versions) == 6
+    assert len(versions) == 7
 
 
 def test_list_database_backups_returns_newest_first(tmp_path: Path) -> None:

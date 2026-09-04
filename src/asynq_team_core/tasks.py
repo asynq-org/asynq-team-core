@@ -42,6 +42,7 @@ class Task:
     priority: str
     assignee_id: str | None
     brief_artifact_path: str | None
+    parent_task_id: str | None
     created_at: str
     updated_at: str
 
@@ -54,6 +55,7 @@ def create_task(
     priority: str = "normal",
     assignee_id: str | None = None,
     brief_artifact_path: str | None = None,
+    parent_task_id: str | None = None,
     task_id: str | None = None,
     clock: Clock = utc_now,
 ) -> Task:
@@ -70,6 +72,7 @@ def create_task(
         priority=clean_priority,
         assignee_id=assignee_id,
         brief_artifact_path=brief_artifact_path,
+        parent_task_id=parent_task_id,
         created_at=created_at,
         updated_at=created_at,
     )
@@ -83,9 +86,10 @@ def create_task(
             priority,
             assignee_id,
             brief_artifact_path,
+            parent_task_id,
             created_at,
             updated_at
-        ) values (?, ?, ?, ?, ?, ?, ?, ?)
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             task.id,
@@ -94,6 +98,7 @@ def create_task(
             task.priority,
             task.assignee_id,
             task.brief_artifact_path,
+            task.parent_task_id,
             task.created_at,
             task.updated_at,
         ),
@@ -111,6 +116,7 @@ def create_task(
                 "priority": task.priority,
                 "assignee_id": task.assignee_id,
                 "brief_artifact_path": task.brief_artifact_path,
+                "parent_task_id": task.parent_task_id,
             },
             clock=lambda: _parse_event_time(created_at),
         ),
@@ -146,6 +152,28 @@ def list_tasks(
             "select * from tasks where status = ? order by updated_at desc, id desc limit ?",
             (status.value, limit),
         ).fetchall()
+
+    return [_task_from_row(row) for row in rows]
+
+
+def list_follow_up_tasks(
+    connection: DatabaseConnection,
+    parent_task_id: str,
+    limit: int = 50,
+) -> list[Task]:
+    """Return follow-up tasks for a parent task."""
+    if limit < 1:
+        raise ValueError("limit must be a positive integer.")
+
+    rows = connection.execute(
+        """
+        select * from tasks
+        where parent_task_id = ?
+        order by updated_at desc, id desc
+        limit ?
+        """,
+        (_require_non_empty(parent_task_id, "parent_task_id"), limit),
+    ).fetchall()
 
     return [_task_from_row(row) for row in rows]
 
@@ -200,6 +228,7 @@ def _task_from_row(row: DatabaseRow) -> Task:
         priority=row["priority"],
         assignee_id=row["assignee_id"],
         brief_artifact_path=row["brief_artifact_path"],
+        parent_task_id=row["parent_task_id"],
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )

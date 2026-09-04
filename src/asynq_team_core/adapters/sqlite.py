@@ -183,6 +183,16 @@ MIGRATIONS = (
             on runs (status, updated_at);
         """,
     ),
+    Migration(
+        version=7,
+        name="add_task_parent",
+        sql="""
+        alter table tasks add column parent_task_id text references tasks(id);
+
+        create index if not exists idx_tasks_parent
+            on tasks (parent_task_id, updated_at);
+        """,
+    ),
 )
 
 
