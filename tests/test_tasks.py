@@ -11,6 +11,7 @@ from asynq_team_core.database import (
 from asynq_team_core.tasks import (
     TaskStatus,
     create_task,
+    get_next_agent_task,
     get_task,
     list_follow_up_tasks,
     list_tasks,
@@ -107,6 +108,53 @@ def test_list_tasks_filters_by_status(tmp_path: Path) -> None:
         tasks = list_tasks(connection, status=TaskStatus.CREATED)
 
     assert tasks == [task]
+
+
+def test_get_next_agent_task_returns_oldest_unassigned_task(tmp_path: Path) -> None:
+    database_path = tmp_path / "team.db"
+    initialize_database(database_path)
+
+    with connect_database(database_path) as connection:
+        first = create_task(
+            connection,
+            title="First task",
+            actor_type="human",
+            actor_id="founder",
+        )
+        create_task(
+            connection,
+            title="Other agent task",
+            actor_type="human",
+            actor_id="founder",
+            assignee_id="ea",
+        )
+        next_task = get_next_agent_task(connection, "george")
+
+    assert next_task == first
+
+
+def test_get_next_agent_task_prefers_matching_assignee_over_other_agents(tmp_path: Path) -> None:
+    database_path = tmp_path / "team.db"
+    initialize_database(database_path)
+
+    with connect_database(database_path) as connection:
+        create_task(
+            connection,
+            title="Other agent task",
+            actor_type="human",
+            actor_id="founder",
+            assignee_id="ea",
+        )
+        assigned = create_task(
+            connection,
+            title="Assigned task",
+            actor_type="human",
+            actor_id="founder",
+            assignee_id="george",
+        )
+        next_task = get_next_agent_task(connection, "george")
+
+    assert next_task == assigned
 
 
 def test_update_task_status_persists_status_and_event(tmp_path: Path) -> None:

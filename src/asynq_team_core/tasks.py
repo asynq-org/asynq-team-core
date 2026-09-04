@@ -156,6 +156,25 @@ def list_tasks(
     return [_task_from_row(row) for row in rows]
 
 
+def get_next_agent_task(connection: DatabaseConnection, agent_id: str) -> Task | None:
+    """Return the oldest created task assigned to an agent or left unassigned."""
+    clean_agent_id = _require_non_empty(agent_id, "agent_id")
+    row = connection.execute(
+        """
+        select * from tasks
+        where status = ?
+        and (assignee_id is null or assignee_id = ?)
+        order by created_at asc, id asc
+        limit 1
+        """,
+        (TaskStatus.CREATED.value, clean_agent_id),
+    ).fetchone()
+
+    if row is None:
+        return None
+    return _task_from_row(row)
+
+
 def list_follow_up_tasks(
     connection: DatabaseConnection,
     parent_task_id: str,
