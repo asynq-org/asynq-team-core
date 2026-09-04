@@ -24,6 +24,7 @@ It provides the domain and persistence building blocks used by the CLI and futur
 - authorized task comments and mentions;
 - agent run records and artifact directories;
 - next-run selection for local agent work queues;
+- run command audit records for local runner activity metadata;
 - task run start workflow that prepares work context in one call;
 - run work packets that collect task, agent, and rule context;
 - authorized run artifact creation before work, result, and review files are written;

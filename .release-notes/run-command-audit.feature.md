@@ -1,0 +1,1 @@
+- Add run command audit recording for local runner activity metadata.
