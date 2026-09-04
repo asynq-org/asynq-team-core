@@ -25,6 +25,20 @@ def test_run_doctor_reports_initialized_workspace(tmp_path: Path) -> None:
     assert checks["git_backup"].status is DoctorStatus.WARN
 
 
+def test_run_doctor_accepts_configured_git_backup_remote(tmp_path: Path) -> None:
+    initialization = initialize_project(
+        tmp_path,
+        git_remote="git@github.com:example/team-state.git",
+    )
+    initialize_database(initialization.layout.database_path)
+
+    report = run_doctor(initialization.layout)
+    checks = _checks_by_name(report)
+
+    assert report.has_failures is False
+    assert checks["git_backup"].status is DoctorStatus.PASS
+
+
 def test_run_doctor_reports_missing_workspace_state(tmp_path: Path) -> None:
     layout = get_project_layout(tmp_path)
 

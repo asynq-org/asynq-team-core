@@ -29,6 +29,21 @@ def test_initialize_project_creates_directories_and_config(tmp_path: Path) -> No
     assert writes[0][1].project.name == "Example"
 
 
+def test_initialize_project_writes_git_backup_config(tmp_path: Path) -> None:
+    writes: list[tuple[Path, TeamConfig]] = []
+
+    result = initialize_project(
+        tmp_path,
+        git_enabled=False,
+        git_remote="git@github.com:example/team-state.git",
+        write_config_file=lambda path, config: writes.append((path, config)),
+    )
+
+    assert writes[0][0] == result.layout.config_path
+    assert writes[0][1].git.enabled is False
+    assert writes[0][1].git.remote == "git@github.com:example/team-state.git"
+
+
 def test_initialize_project_preserves_existing_config(tmp_path: Path) -> None:
     writes: list[tuple[Path, TeamConfig]] = []
     config_path = tmp_path / ".team" / "config.yaml"

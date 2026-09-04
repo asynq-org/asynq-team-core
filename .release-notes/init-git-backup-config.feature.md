@@ -1,0 +1,1 @@
+- Allow project initialization to write git artifact backup settings, including an optional remote.

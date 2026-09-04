@@ -12,6 +12,18 @@ def test_default_config_uses_documented_storage_paths() -> None:
     assert config.git.push_run_artifacts is True
 
 
+def test_default_config_accepts_git_backup_options() -> None:
+    config = default_config(
+        project_name="Example",
+        git_enabled=False,
+        git_remote="  git@github.com:example/team-state.git  ",
+    )
+
+    assert config.project.name == "Example"
+    assert config.git.enabled is False
+    assert config.git.remote == "git@github.com:example/team-state.git"
+
+
 def test_config_round_trips_through_mapping() -> None:
     original = default_config(project_name="Example")
 

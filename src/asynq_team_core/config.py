@@ -209,9 +209,16 @@ class TeamConfig:
         }
 
 
-def default_config(project_name: str = "Asynq Team") -> TeamConfig:
+def default_config(
+    project_name: str = "Asynq Team",
+    git_enabled: bool = True,
+    git_remote: str = "",
+) -> TeamConfig:
     """Return the default project-local runtime configuration."""
-    return TeamConfig(project=ProjectConfig(name=project_name))
+    return TeamConfig(
+        project=ProjectConfig(name=project_name),
+        git=GitConfig(enabled=git_enabled, remote=_clean_single_line(git_remote, "git_remote")),
+    )
 
 
 def load_config(path: Path) -> TeamConfig:
@@ -243,3 +250,14 @@ def _require_yaml() -> Any:
         raise RuntimeError("PyYAML is required to read and write Asynq Team config.") from exc
 
     return yaml
+
+
+def _clean_single_line(value: str, field: str) -> str:
+    if not isinstance(value, str):
+        raise TypeError(f"{field} must be a string.")
+
+    clean_value = value.strip()
+    if "\n" in clean_value or "\r" in clean_value:
+        raise ValueError(f"{field} must be a single-line string.")
+
+    return clean_value

@@ -23,6 +23,8 @@ class ProjectInitialization:
 def initialize_project(
     workspace: Path,
     project_name: str = "Asynq Team",
+    git_enabled: bool = True,
+    git_remote: str = "",
     overwrite_config: bool = False,
     overwrite_defaults: bool = False,
     write_config_file: ConfigWriter = write_config,
@@ -33,7 +35,14 @@ def initialize_project(
 
     should_write_config = overwrite_config or not layout.config_path.exists()
     if should_write_config:
-        write_config_file(layout.config_path, default_config(project_name=project_name))
+        write_config_file(
+            layout.config_path,
+            default_config(
+                project_name=project_name,
+                git_enabled=git_enabled,
+                git_remote=git_remote,
+            ),
+        )
 
     created_default_files = seed_default_project_files(layout, overwrite=overwrite_defaults)
 
