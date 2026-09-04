@@ -1,0 +1,1 @@
+- Validate runner policy files in workspace doctor diagnostics.

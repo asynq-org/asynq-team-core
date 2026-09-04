@@ -14,6 +14,7 @@ from asynq_team_core.database import (
     get_expected_migration_versions,
 )
 from asynq_team_core.paths import ProjectLayout
+from asynq_team_core.runner_policy import load_runner_policy
 
 
 class DoctorStatus(str, Enum):
@@ -58,6 +59,7 @@ def run_doctor(layout: ProjectLayout) -> DoctorReport:
         _check_migrations(layout.database_path),
         _check_required_directories(layout),
         _check_required_files(layout),
+        _check_runner_policy(layout),
         _check_git_backup(config),
     )
 
@@ -172,6 +174,19 @@ def _check_required_files(layout: ProjectLayout) -> DoctorCheck:
     if missing:
         return DoctorCheck("default_files", DoctorStatus.FAIL, f"Missing files: {', '.join(missing)}")
     return DoctorCheck("default_files", DoctorStatus.PASS, "Default agent, rule, and policy files exist.")
+
+
+def _check_runner_policy(layout: ProjectLayout) -> DoctorCheck:
+    try:
+        policy = load_runner_policy(layout)
+    except (RuntimeError, TypeError, ValueError) as exc:
+        return DoctorCheck("runner_policy", DoctorStatus.FAIL, f"Runner policy is invalid: {exc}")
+
+    return DoctorCheck(
+        "runner_policy",
+        DoctorStatus.PASS,
+        f"Runner policy is valid with {len(policy.allowed_tools)} allowed tools.",
+    )
 
 
 def _check_git_backup(config: TeamConfig | None) -> DoctorCheck:
