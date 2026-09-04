@@ -91,6 +91,7 @@ roles:
       - repo.read
       - audit.read
       - review.create
+      - comment.create
       - task.create
       - approval.request
     require_approval:

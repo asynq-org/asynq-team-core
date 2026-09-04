@@ -173,7 +173,7 @@ def create_authorized_task_comment(
 ) -> AuthorizedCommentCreation:
     """Create a task comment after enforcing agent comment.create capability."""
     clean_task_id = _require_existing_task_id(database_path, task_id)
-    authorization = _authorize_agent_comment_creation(
+    authorization = authorize_task_comment_creation(
         database_path=database_path,
         layout=layout,
         task_id=clean_task_id,
@@ -197,6 +197,33 @@ def create_authorized_task_comment(
         )
 
     return AuthorizedCommentCreation(authorization=authorization, created=created)
+
+
+def authorize_task_comment_creation(
+    database_path: Path,
+    layout: ProjectLayout,
+    task_id: str,
+    author_type: str,
+    author_id: str,
+    approver_id: str = "founder",
+    clock: Clock = utc_now,
+) -> CapabilityAuthorization | None:
+    """Authorize a task comment without creating the comment."""
+    clean_task_id = _require_existing_task_id(database_path, task_id)
+    if author_type != "agent":
+        return None
+
+    return authorize_agent_capability(
+        database_path=database_path,
+        layout=layout,
+        agent_id=author_id,
+        capability="comment.create",
+        reason=f"Create comment on task: {clean_task_id}",
+        approver_id=approver_id,
+        subject_type="task",
+        subject_id=clean_task_id,
+        clock=clock,
+    )
 
 
 def get_comment(connection: DatabaseConnection, comment_id: str) -> Comment | None:
@@ -323,31 +350,6 @@ def _require_existing_task(connection: DatabaseConnection, task_id: str) -> str:
 def _require_existing_task_id(database_path: Path, task_id: str) -> str:
     with connect_database(database_path) as connection:
         return _require_existing_task(connection, task_id)
-
-
-def _authorize_agent_comment_creation(
-    database_path: Path,
-    layout: ProjectLayout,
-    task_id: str,
-    author_type: str,
-    author_id: str,
-    approver_id: str,
-    clock: Clock,
-) -> CapabilityAuthorization | None:
-    if author_type != "agent":
-        return None
-
-    return authorize_agent_capability(
-        database_path=database_path,
-        layout=layout,
-        agent_id=author_id,
-        capability="comment.create",
-        reason=f"Create comment on task: {task_id}",
-        approver_id=approver_id,
-        subject_type="task",
-        subject_id=task_id,
-        clock=clock,
-    )
 
 
 def _dedupe_mentions(mentions: tuple[str, ...]) -> tuple[str, ...]:

@@ -7,6 +7,7 @@ import yaml
 from asynq_team_core.approvals import list_approvals
 from asynq_team_core.comments import (
     CommentMentionStatus,
+    authorize_task_comment_creation,
     create_authorized_task_comment,
     create_task_comment,
     get_comment,
@@ -179,6 +180,23 @@ def test_create_authorized_task_comment_allows_agent_comment(tmp_path: Path) -> 
     assert result.created is not None
     assert result.created.comment.id == "CMT-0001"
     assert len(result.created.mentions) == 1
+
+
+def test_authorize_task_comment_creation_does_not_create_comment(tmp_path: Path) -> None:
+    layout, task_id = _create_policy_workspace_with_task(tmp_path)
+
+    authorization = authorize_task_comment_creation(
+        database_path=layout.database_path,
+        layout=layout,
+        task_id=task_id,
+        author_type="agent",
+        author_id="george",
+    )
+
+    assert authorization is not None
+    assert authorization.evaluation.decision is CapabilityDecision.ALLOW
+    with connect_database(layout.database_path) as connection:
+        assert list_task_comments(connection, task_id) == []
 
 
 def test_create_authorized_task_comment_requests_approval_when_gated(

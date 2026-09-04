@@ -25,6 +25,7 @@ def test_load_capability_policy_reads_default_roles(tmp_path: Path) -> None:
     assert "repo.read" in policy.roles["engineer"].allow
     assert "main.merge" in policy.roles["engineer"].require_approval
     assert "approval.bypass" in policy.roles["engineer"].deny
+    assert "comment.create" in policy.roles["supervisor"].allow
 
 
 def test_evaluate_agent_capability_allows_known_role_capability(tmp_path: Path) -> None:

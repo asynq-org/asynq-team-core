@@ -6,10 +6,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from asynq_team_core.artifacts import ArtifactWrite, write_run_result
-from asynq_team_core.comments import CommentCreation, create_task_comment
+from asynq_team_core.comments import (
+    CommentCreation,
+    authorize_task_comment_creation,
+    create_task_comment,
+)
 from asynq_team_core.database import connect_database
 from asynq_team_core.events import Clock, utc_now
 from asynq_team_core.paths import ProjectLayout
+from asynq_team_core.policy import CapabilityAuthorization
 from asynq_team_core.runs import Run, RunStatus, get_run, update_run_status
 from asynq_team_core.tasks import Task, get_task
 
@@ -30,6 +35,14 @@ class RunSubmission:
     task: Task
     artifact: ArtifactWrite
     comment: CommentCreation
+
+
+@dataclass(frozen=True)
+class AuthorizedRunSubmission:
+    """Result of an authorized run submission attempt."""
+
+    authorization: CapabilityAuthorization | None
+    submission: RunSubmission | None
 
 
 def submit_run_for_review(
@@ -93,6 +106,66 @@ def submit_run_for_review(
         artifact=artifact,
         comment=comment,
     )
+
+
+def submit_authorized_run_for_review(
+    database_path: Path,
+    layout: ProjectLayout,
+    run_id: str,
+    summary_md: str,
+    reviewer_id: str,
+    actor_type: str,
+    actor_id: str,
+    checks_md: str | None = None,
+    overwrite: bool = False,
+    approver_id: str = "founder",
+    clock: Clock = utc_now,
+) -> AuthorizedRunSubmission:
+    """Submit a run after enforcing agent comment.create capability."""
+    run, task = _load_submittable_run(database_path, run_id)
+    authorization = authorize_task_comment_creation(
+        database_path=database_path,
+        layout=layout,
+        task_id=task.id,
+        author_type=actor_type,
+        author_id=actor_id,
+        approver_id=approver_id,
+        clock=clock,
+    )
+    if authorization is not None and authorization.approval_request is not None:
+        return AuthorizedRunSubmission(authorization=authorization, submission=None)
+
+    submission = submit_run_for_review(
+        database_path=database_path,
+        layout=layout,
+        run_id=run.id,
+        summary_md=summary_md,
+        checks_md=checks_md,
+        reviewer_id=reviewer_id,
+        actor_type=actor_type,
+        actor_id=actor_id,
+        overwrite=overwrite,
+        clock=clock,
+    )
+
+    return AuthorizedRunSubmission(authorization=authorization, submission=submission)
+
+
+def _load_submittable_run(database_path: Path, run_id: str) -> tuple[Run, Task]:
+    with connect_database(database_path) as connection:
+        run = get_run(connection, run_id)
+        if run is None:
+            raise ValueError(f"Run not found: {run_id}")
+        if run.artifact_dir_path is None:
+            raise ValueError(f"Run has no artifact directory: {run.id}")
+        if run.status not in REVIEW_SUBMITTABLE_STATUSES:
+            raise ValueError(f"Run cannot be submitted from status: {run.status.value}")
+
+        task = get_task(connection, run.task_id)
+        if task is None:
+            raise ValueError(f"Task not found for run {run.id}: {run.task_id}")
+
+    return run, task
 
 
 def _render_result(

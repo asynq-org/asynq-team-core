@@ -7,10 +7,15 @@ from enum import Enum
 from pathlib import Path
 
 from asynq_team_core.artifacts import ArtifactWrite, write_run_review
-from asynq_team_core.comments import CommentCreation, create_task_comment
+from asynq_team_core.comments import (
+    CommentCreation,
+    authorize_task_comment_creation,
+    create_task_comment,
+)
 from asynq_team_core.database import connect_database
 from asynq_team_core.events import Clock, utc_now
 from asynq_team_core.paths import ProjectLayout
+from asynq_team_core.policy import CapabilityAuthorization
 from asynq_team_core.runs import Run, RunStatus, get_run, update_run_status
 from asynq_team_core.tasks import Task, get_task
 
@@ -31,6 +36,14 @@ class RunReview:
     artifact: ArtifactWrite
     comment: CommentCreation
     decision: RunReviewDecision
+
+
+@dataclass(frozen=True)
+class AuthorizedRunReview:
+    """Result of an authorized run review attempt."""
+
+    authorization: CapabilityAuthorization | None
+    review: RunReview | None
 
 
 def review_run(
@@ -94,6 +107,64 @@ def review_run(
         comment=comment,
         decision=decision,
     )
+
+
+def review_authorized_run(
+    database_path: Path,
+    layout: ProjectLayout,
+    run_id: str,
+    decision: RunReviewDecision,
+    body_md: str,
+    actor_type: str,
+    actor_id: str,
+    overwrite: bool = False,
+    approver_id: str = "founder",
+    clock: Clock = utc_now,
+) -> AuthorizedRunReview:
+    """Review a run after enforcing agent comment.create capability."""
+    run, task = _load_reviewable_run(database_path, run_id)
+    authorization = authorize_task_comment_creation(
+        database_path=database_path,
+        layout=layout,
+        task_id=task.id,
+        author_type=actor_type,
+        author_id=actor_id,
+        approver_id=approver_id,
+        clock=clock,
+    )
+    if authorization is not None and authorization.approval_request is not None:
+        return AuthorizedRunReview(authorization=authorization, review=None)
+
+    review = review_run(
+        database_path=database_path,
+        layout=layout,
+        run_id=run.id,
+        decision=decision,
+        body_md=body_md,
+        actor_type=actor_type,
+        actor_id=actor_id,
+        overwrite=overwrite,
+        clock=clock,
+    )
+
+    return AuthorizedRunReview(authorization=authorization, review=review)
+
+
+def _load_reviewable_run(database_path: Path, run_id: str) -> tuple[Run, Task]:
+    with connect_database(database_path) as connection:
+        run = get_run(connection, run_id)
+        if run is None:
+            raise ValueError(f"Run not found: {run_id}")
+        if run.artifact_dir_path is None:
+            raise ValueError(f"Run has no artifact directory: {run.id}")
+        if run.status is not RunStatus.WAITING_FOR_REVIEW:
+            raise ValueError(f"Run cannot be reviewed from status: {run.status.value}")
+
+        task = get_task(connection, run.task_id)
+        if task is None:
+            raise ValueError(f"Task not found for run {run.id}: {run.task_id}")
+
+    return run, task
 
 
 def _status_for_decision(decision: RunReviewDecision) -> RunStatus:
