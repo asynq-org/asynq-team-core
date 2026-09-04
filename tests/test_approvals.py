@@ -6,6 +6,7 @@ import pytest
 from asynq_team_core.approvals import (
     ApprovalStatus,
     deny_approval,
+    find_matching_approval,
     get_approval,
     grant_approval,
     list_approvals,
@@ -71,6 +72,46 @@ def test_list_approvals_filters_by_status_and_approver(tmp_path: Path) -> None:
         approvals = list_approvals(connection, approver_id="founder")
 
     assert approvals == [founder_request.approval]
+
+
+def test_find_matching_approval_returns_matching_granted_subject(tmp_path: Path) -> None:
+    database_path = tmp_path / "team.db"
+    initialize_database(database_path)
+
+    with connect_database(database_path) as connection:
+        requested = request_approval(
+            connection,
+            action="main.merge",
+            reason="Merge reviewed changes.",
+            requester_type="agent",
+            requester_id="george",
+            subject_type="run",
+            subject_id="RUN-0001",
+        )
+        grant_approval(connection, requested.approval.id, actor_type="human", actor_id="founder")
+        request_approval(
+            connection,
+            action="main.merge",
+            reason="Different subject.",
+            requester_type="agent",
+            requester_id="george",
+            subject_type="run",
+            subject_id="RUN-0002",
+        )
+
+        approval = find_matching_approval(
+            connection,
+            action="main.merge",
+            requester_type="agent",
+            requester_id="george",
+            status=ApprovalStatus.GRANTED,
+            subject_type="run",
+            subject_id="RUN-0001",
+        )
+
+    assert approval is not None
+    assert approval.id == requested.approval.id
+    assert approval.status is ApprovalStatus.GRANTED
 
 
 def test_grant_approval_updates_status_and_closes_inbox_item(tmp_path: Path) -> None:

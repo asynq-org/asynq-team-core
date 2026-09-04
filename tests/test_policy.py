@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from asynq_team_core.approvals import list_approvals
+from asynq_team_core.approvals import ApprovalStatus, grant_approval, list_approvals
 from asynq_team_core.database import connect_database, initialize_database
 from asynq_team_core.inbox import list_inbox_items
 from asynq_team_core.paths import create_project_directories, get_project_layout
@@ -127,6 +127,51 @@ def test_authorize_agent_capability_requests_approval_for_gated_capability(
 
     assert approvals == [authorization.approval_request.approval]
     assert inbox_items == [authorization.approval_request.inbox_item]
+
+
+def test_authorize_agent_capability_reuses_granted_subject_approval(
+    tmp_path: Path,
+) -> None:
+    layout = _create_workspace(tmp_path)
+    initialize_database(layout.database_path)
+
+    first_authorization = authorize_agent_capability(
+        database_path=layout.database_path,
+        layout=layout,
+        agent_id="george",
+        capability="main.merge",
+        reason="Merge reviewed changes.",
+        subject_type="run",
+        subject_id="RUN-0001",
+    )
+    assert first_authorization.approval_request is not None
+
+    with connect_database(layout.database_path) as connection:
+        grant_approval(
+            connection,
+            first_authorization.approval_request.approval.id,
+            actor_type="human",
+            actor_id="founder",
+        )
+
+    second_authorization = authorize_agent_capability(
+        database_path=layout.database_path,
+        layout=layout,
+        agent_id="george",
+        capability="main.merge",
+        reason="Retry approved merge.",
+        subject_type="run",
+        subject_id="RUN-0001",
+    )
+
+    assert second_authorization.evaluation.decision is CapabilityDecision.REQUIRE_APPROVAL
+    assert second_authorization.approval_request is None
+
+    with connect_database(layout.database_path) as connection:
+        approvals = list_approvals(connection, status=ApprovalStatus.GRANTED)
+
+    assert len(approvals) == 1
+    assert approvals[0].id == first_authorization.approval_request.approval.id
 
 
 def test_authorize_agent_capability_rejects_denied_capability(tmp_path: Path) -> None:

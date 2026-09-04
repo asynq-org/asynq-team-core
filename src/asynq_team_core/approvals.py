@@ -195,6 +195,52 @@ def list_approvals(
     return [_approval_from_row(row) for row in rows]
 
 
+def find_matching_approval(
+    connection: DatabaseConnection,
+    action: str,
+    requester_type: str,
+    requester_id: str,
+    status: ApprovalStatus,
+    subject_type: str | None = None,
+    subject_id: str | None = None,
+) -> Approval | None:
+    """Return the newest approval matching an action, requester, subject, and status."""
+    clean_action = _require_non_empty(action, "action")
+    clean_requester_type = _require_non_empty(requester_type, "requester_type")
+    clean_requester_id = _require_non_empty(requester_id, "requester_id")
+
+    subject_clauses: list[str] = []
+    subject_params: list[str] = []
+    if subject_type is None:
+        subject_clauses.append("subject_type is null")
+    else:
+        subject_clauses.append("subject_type = ?")
+        subject_params.append(_require_non_empty(subject_type, "subject_type"))
+    if subject_id is None:
+        subject_clauses.append("subject_id is null")
+    else:
+        subject_clauses.append("subject_id = ?")
+        subject_params.append(_require_non_empty(subject_id, "subject_id"))
+    subject_clause = " and ".join(subject_clauses)
+
+    row = connection.execute(
+        f"""
+        select * from approvals
+        where action = ?
+        and requester_type = ?
+        and requester_id = ?
+        and status = ?
+        and {subject_clause}
+        order by requested_at desc, id desc
+        limit 1
+        """,
+        (clean_action, clean_requester_type, clean_requester_id, status.value, *subject_params),
+    ).fetchone()
+    if row is None:
+        return None
+    return _approval_from_row(row)
+
+
 def grant_approval(
     connection: DatabaseConnection,
     approval_id: str,

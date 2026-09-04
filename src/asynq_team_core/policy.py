@@ -7,7 +7,12 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from asynq_team_core.approvals import ApprovalRequest, request_approval
+from asynq_team_core.approvals import (
+    ApprovalRequest,
+    ApprovalStatus,
+    find_matching_approval,
+    request_approval,
+)
 from asynq_team_core.database import connect_database
 from asynq_team_core.events import Clock, utc_now
 from asynq_team_core.paths import ProjectLayout
@@ -147,6 +152,18 @@ def authorize_agent_capability(
         raise PermissionError(evaluation.reason)
 
     with connect_database(database_path) as connection:
+        granted = find_matching_approval(
+            connection,
+            action=capability,
+            requester_type="agent",
+            requester_id=agent_id,
+            status=ApprovalStatus.GRANTED,
+            subject_type=subject_type,
+            subject_id=subject_id,
+        )
+        if granted is not None:
+            return CapabilityAuthorization(evaluation=evaluation, approval_request=None)
+
         approval_request = request_approval(
             connection,
             action=capability,

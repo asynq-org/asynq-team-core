@@ -1,0 +1,1 @@
+- Reuse granted approvals for matching gated agent actions on the same subject.
