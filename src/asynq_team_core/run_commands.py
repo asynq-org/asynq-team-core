@@ -27,6 +27,7 @@ def record_run_command(
     actor_id: str,
     cwd: str | None = None,
     duration_ms: int | None = None,
+    tool: str | None = None,
     clock: Clock = utc_now,
 ) -> RunCommandRecord:
     """Record command execution metadata for a run without storing command output."""
@@ -34,6 +35,7 @@ def record_run_command(
     clean_exit_code = _require_int(exit_code, "exit_code")
     clean_duration_ms = _optional_non_negative_int(duration_ms, "duration_ms")
     clean_cwd = _optional_non_empty(cwd, "cwd")
+    clean_tool = _optional_non_empty(tool, "tool")
 
     with connect_database(database_path) as connection:
         run = get_run(connection, run_id)
@@ -53,6 +55,7 @@ def record_run_command(
                 "cwd": clean_cwd,
                 "exit_code": clean_exit_code,
                 "duration_ms": clean_duration_ms,
+                "tool": clean_tool,
             },
             clock=clock,
         )

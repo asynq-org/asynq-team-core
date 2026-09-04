@@ -26,6 +26,7 @@ It provides the domain and persistence building blocks used by the CLI and futur
 - next-run selection for local agent work queues;
 - run command audit records for local runner activity metadata;
 - run file-change audit records with workspace-relative path validation;
+- policy-enforced local runner command execution with command audit records;
 - runner tool policy loading and evaluation for local runner adapters;
 - task run start workflow that prepares work context in one call;
 - run work packets that collect task, agent, and rule context;
