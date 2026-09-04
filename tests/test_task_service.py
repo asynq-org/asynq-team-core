@@ -2,11 +2,20 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+import yaml
 
+from asynq_team_core.approvals import list_approvals
 from asynq_team_core.database import connect_database, initialize_database
 from asynq_team_core.paths import create_project_directories, get_project_layout
-from asynq_team_core.task_service import create_follow_up_task, create_task_with_brief
-from asynq_team_core.tasks import get_task, list_follow_up_tasks
+from asynq_team_core.policy import CapabilityDecision
+from asynq_team_core.project_files import seed_default_project_files
+from asynq_team_core.task_service import (
+    create_authorized_follow_up_task,
+    create_authorized_task_with_brief,
+    create_follow_up_task,
+    create_task_with_brief,
+)
+from asynq_team_core.tasks import get_task, list_follow_up_tasks, list_tasks
 
 
 def test_create_task_with_brief_writes_artifact_and_task_record(tmp_path: Path) -> None:
@@ -124,3 +133,136 @@ def test_create_follow_up_task_rejects_missing_parent(tmp_path: Path) -> None:
             actor_type="agent",
             actor_id="george",
         )
+
+
+def test_create_authorized_task_with_brief_allows_agent_task_creation(
+    tmp_path: Path,
+) -> None:
+    layout = _create_initialized_policy_workspace(tmp_path)
+
+    result = create_authorized_task_with_brief(
+        database_path=layout.database_path,
+        layout=layout,
+        title="Agent task",
+        brief_md="Build the agent task.",
+        actor_type="agent",
+        actor_id="george",
+    )
+
+    assert result.authorization is not None
+    assert result.authorization.evaluation.decision is CapabilityDecision.ALLOW
+    assert result.created is not None
+    assert result.created.task.id == "TASK-0001"
+
+
+def test_create_authorized_task_with_brief_requests_approval_when_gated(
+    tmp_path: Path,
+) -> None:
+    layout = _create_initialized_policy_workspace(tmp_path)
+    _replace_engineer_task_create_policy(layout, "require_approval")
+
+    result = create_authorized_task_with_brief(
+        database_path=layout.database_path,
+        layout=layout,
+        title="Agent task",
+        brief_md="Build the agent task.",
+        actor_type="agent",
+        actor_id="george",
+    )
+
+    assert result.authorization is not None
+    assert result.authorization.evaluation.decision is CapabilityDecision.REQUIRE_APPROVAL
+    assert result.authorization.approval_request is not None
+    assert result.created is None
+    with connect_database(layout.database_path) as connection:
+        assert list_tasks(connection) == []
+        approvals = list_approvals(connection)
+
+    assert approvals == [result.authorization.approval_request.approval]
+
+
+def test_create_authorized_task_with_brief_rejects_denied_agent(
+    tmp_path: Path,
+) -> None:
+    layout = _create_initialized_policy_workspace(tmp_path)
+    _replace_engineer_task_create_policy(layout, "deny")
+
+    with pytest.raises(PermissionError, match="denied for role"):
+        create_authorized_task_with_brief(
+            database_path=layout.database_path,
+            layout=layout,
+            title="Agent task",
+            brief_md="Build the agent task.",
+            actor_type="agent",
+            actor_id="george",
+        )
+
+
+def test_create_authorized_task_with_brief_bypasses_policy_for_humans(
+    tmp_path: Path,
+) -> None:
+    layout = get_project_layout(tmp_path)
+    create_project_directories(layout)
+    initialize_database(layout.database_path)
+
+    result = create_authorized_task_with_brief(
+        database_path=layout.database_path,
+        layout=layout,
+        title="Human task",
+        brief_md="Build the human task.",
+        actor_type="human",
+        actor_id="founder",
+    )
+
+    assert result.authorization is None
+    assert result.created is not None
+    assert result.created.task.id == "TASK-0001"
+
+
+def test_create_authorized_follow_up_task_requests_approval_when_gated(
+    tmp_path: Path,
+) -> None:
+    layout = _create_initialized_policy_workspace(tmp_path)
+    parent = create_task_with_brief(
+        database_path=layout.database_path,
+        layout=layout,
+        title="Parent task",
+        brief_md="Build the parent task.",
+        actor_type="human",
+        actor_id="founder",
+    ).task
+    _replace_engineer_task_create_policy(layout, "require_approval")
+
+    result = create_authorized_follow_up_task(
+        database_path=layout.database_path,
+        layout=layout,
+        parent_task_id=parent.id,
+        title="Agent follow-up",
+        brief_md="Build the follow-up.",
+        actor_type="agent",
+        actor_id="george",
+    )
+
+    assert result.authorization is not None
+    assert result.authorization.approval_request is not None
+    assert result.authorization.approval_request.approval.subject_id == parent.id
+    assert result.created is None
+
+
+def _create_initialized_policy_workspace(tmp_path: Path):
+    layout = get_project_layout(tmp_path)
+    create_project_directories(layout)
+    seed_default_project_files(layout)
+    initialize_database(layout.database_path)
+
+    return layout
+
+
+def _replace_engineer_task_create_policy(layout, target: str) -> None:
+    path = layout.policy_dir / "capabilities.yaml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    engineer = data["roles"]["engineer"]
+    for field in ("allow", "require_approval", "deny"):
+        engineer[field] = [item for item in engineer.get(field, []) if item != "task.create"]
+    engineer.setdefault(target, []).append("task.create")
+    path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")

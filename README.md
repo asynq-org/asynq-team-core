@@ -19,6 +19,7 @@ It provides the domain and persistence building blocks used by the CLI and futur
 - local SQLite database setup and migrations;
 - task records and Markdown task briefs;
 - linked follow-up tasks for scoped future improvements;
+- authorized task creation that enforces agent `task.create` capability;
 - task status updates;
 - task comments and mentions;
 - agent run records and artifact directories;

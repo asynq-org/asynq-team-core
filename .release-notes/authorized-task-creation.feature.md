@@ -1,0 +1,1 @@
+- Add authorized task creation workflows that enforce agent `task.create` capability.
