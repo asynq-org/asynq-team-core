@@ -18,7 +18,7 @@ from asynq_team_core.events import Clock, utc_now
 from asynq_team_core.paths import ProjectLayout
 from asynq_team_core.policy import CapabilityAuthorization, authorize_agent_capability
 from asynq_team_core.runs import Run, RunStatus, get_run, update_run_status
-from asynq_team_core.tasks import Task, get_task
+from asynq_team_core.tasks import Task, TaskStatus, get_task, update_task_status
 
 
 class RunReviewDecision(str, Enum):
@@ -91,6 +91,14 @@ def review_run(
             actor_id=actor_id,
             clock=clock,
         )
+        reviewed_task = update_task_status(
+            connection,
+            task_id=task.id,
+            status=_task_status_for_decision(decision),
+            actor_type=actor_type,
+            actor_id=actor_id,
+            clock=clock,
+        )
         comment = create_task_comment(
             connection,
             task_id=task.id,
@@ -103,7 +111,7 @@ def review_run(
 
     return RunReview(
         run=reviewed_run,
-        task=task,
+        task=reviewed_task,
         artifact=artifact,
         comment=comment,
         decision=decision,
@@ -222,6 +230,14 @@ def _status_for_decision(decision: RunReviewDecision) -> RunStatus:
         return RunStatus.APPROVED
     if decision is RunReviewDecision.RETURN:
         return RunStatus.RETURNED
+    raise ValueError(f"Unsupported review decision: {decision}")
+
+
+def _task_status_for_decision(decision: RunReviewDecision) -> TaskStatus:
+    if decision is RunReviewDecision.APPROVE:
+        return TaskStatus.APPROVED
+    if decision is RunReviewDecision.RETURN:
+        return TaskStatus.RETURNED
     raise ValueError(f"Unsupported review decision: {decision}")
 
 

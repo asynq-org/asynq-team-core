@@ -12,6 +12,7 @@ from asynq_team_core.run_review import RunReviewDecision, review_authorized_run,
 from asynq_team_core.run_service import create_run_with_artifact_dir
 from asynq_team_core.runs import RunStatus, get_run, update_run_status
 from asynq_team_core.task_service import create_task_with_brief
+from asynq_team_core.tasks import TaskStatus, get_task
 
 
 def test_review_run_approves_submitted_run_and_mentions_agent(tmp_path: Path) -> None:
@@ -29,8 +30,12 @@ def test_review_run_approves_submitted_run_and_mentions_agent(tmp_path: Path) ->
 
     with connect_database(layout.database_path) as connection:
         inbox_items = list_inbox_items(connection, recipient_id="george")
+        task = get_task(connection, review.task.id)
 
     assert review.run.status is RunStatus.APPROVED
+    assert review.task.status is TaskStatus.APPROVED
+    assert task is not None
+    assert task.status is TaskStatus.APPROVED
     assert review.artifact.relative_path == ".team/runs/george/RUN-0001/review.md"
     assert "Looks ready." in review.artifact.path.read_text(encoding="utf-8")
     assert review.comment.mentions[0].recipient_id == "george"
@@ -52,6 +57,7 @@ def test_review_run_can_return_submitted_run(tmp_path: Path) -> None:
     )
 
     assert review.run.status is RunStatus.RETURNED
+    assert review.task.status is TaskStatus.RETURNED
     assert "return" in review.artifact.path.read_text(encoding="utf-8")
 
 
