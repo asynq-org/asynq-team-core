@@ -1,0 +1,1 @@
+- Add run file-change audit recording with workspace-relative path validation.
