@@ -137,6 +137,38 @@ def test_submit_authorized_run_for_review_requests_comment_approval_when_gated(
     assert not (layout.runs_dir / "george" / run_id / "result.md").exists()
 
 
+def test_submit_authorized_run_for_review_requests_artifact_approval_when_gated(
+    tmp_path: Path,
+) -> None:
+    layout, run_id = _create_policy_workspace_run(tmp_path, status=RunStatus.WORKING)
+    _replace_role_capability_policy(layout, "engineer", "artifact.create", "require_approval")
+
+    result = submit_authorized_run_for_review(
+        database_path=layout.database_path,
+        layout=layout,
+        run_id=run_id,
+        summary_md="Implemented the first pass.",
+        reviewer_id="supervisor",
+        actor_type="agent",
+        actor_id="george",
+    )
+
+    with connect_database(layout.database_path) as connection:
+        stored_run = get_run(connection, run_id)
+        approvals = list_approvals(connection)
+        inbox_items = list_inbox_items(connection, recipient_id="supervisor")
+
+    assert result.authorization is not None
+    assert result.authorization.evaluation.capability == "artifact.create"
+    assert result.authorization.approval_request is not None
+    assert result.submission is None
+    assert stored_run is not None
+    assert stored_run.status is RunStatus.WORKING
+    assert approvals == [result.authorization.approval_request.approval]
+    assert inbox_items == []
+    assert not (layout.runs_dir / "george" / run_id / "result.md").exists()
+
+
 def _create_workspace_run(tmp_path: Path, status: RunStatus) -> tuple[ProjectLayout, str]:
     layout = get_project_layout(tmp_path)
     create_project_directories(layout)
@@ -212,10 +244,19 @@ def _create_policy_workspace_run(tmp_path: Path, status: RunStatus) -> tuple[Pro
 
 
 def _replace_role_comment_create_policy(layout: ProjectLayout, role: str, target: str) -> None:
+    _replace_role_capability_policy(layout, role, "comment.create", target)
+
+
+def _replace_role_capability_policy(
+    layout: ProjectLayout,
+    role: str,
+    capability: str,
+    target: str,
+) -> None:
     path = layout.policy_dir / "capabilities.yaml"
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     role_policy = data["roles"][role]
     for field in ("allow", "require_approval", "deny"):
-        role_policy[field] = [item for item in role_policy.get(field, []) if item != "comment.create"]
-    role_policy.setdefault(target, []).append("comment.create")
+        role_policy[field] = [item for item in role_policy.get(field, []) if item != capability]
+    role_policy.setdefault(target, []).append(capability)
     path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")

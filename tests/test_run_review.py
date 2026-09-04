@@ -148,6 +148,38 @@ def test_review_authorized_run_requests_review_approval_when_gated(
     assert not (layout.runs_dir / "george" / run_id / "review.md").exists()
 
 
+def test_review_authorized_run_requests_artifact_approval_when_gated(
+    tmp_path: Path,
+) -> None:
+    layout, run_id = _create_policy_submitted_run(tmp_path)
+    _replace_role_capability_policy(layout, "supervisor", "artifact.create", "require_approval")
+
+    result = review_authorized_run(
+        database_path=layout.database_path,
+        layout=layout,
+        run_id=run_id,
+        decision=RunReviewDecision.APPROVE,
+        body_md="Looks ready.",
+        actor_type="agent",
+        actor_id="supervisor",
+    )
+
+    with connect_database(layout.database_path) as connection:
+        stored_run = get_run(connection, run_id)
+        approvals = list_approvals(connection)
+        inbox_items = list_inbox_items(connection, recipient_id="george")
+
+    assert result.authorization is not None
+    assert result.authorization.evaluation.capability == "artifact.create"
+    assert result.authorization.approval_request is not None
+    assert result.review is None
+    assert stored_run is not None
+    assert stored_run.status is RunStatus.WAITING_FOR_REVIEW
+    assert approvals == [result.authorization.approval_request.approval]
+    assert inbox_items == []
+    assert not (layout.runs_dir / "george" / run_id / "review.md").exists()
+
+
 def test_review_authorized_run_rejects_denied_review_capability(tmp_path: Path) -> None:
     layout, run_id = _create_policy_submitted_run(tmp_path)
     _replace_role_capability_policy(layout, "supervisor", "review.create", "deny")

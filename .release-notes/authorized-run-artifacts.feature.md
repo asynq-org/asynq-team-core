@@ -1,0 +1,1 @@
+- Enforce agent `artifact.create` capability before creating run work, result, and review artifacts.

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
+from asynq_team_core.artifact_policy import authorize_run_artifact_creation
 from asynq_team_core.artifacts import ArtifactWrite, write_run_review
 from asynq_team_core.comments import (
     CommentCreation,
@@ -121,12 +122,24 @@ def review_authorized_run(
     approver_id: str = "founder",
     clock: Clock = utc_now,
 ) -> AuthorizedRunReview:
-    """Review a run after enforcing agent review and comment capabilities."""
+    """Review a run after enforcing agent review, artifact, and comment capabilities."""
     run, task = _load_reviewable_run(database_path, run_id)
     authorization = _authorize_agent_review_creation(
         database_path=database_path,
         layout=layout,
         run_id=run.id,
+        actor_type=actor_type,
+        actor_id=actor_id,
+        approver_id=approver_id,
+        clock=clock,
+    )
+    if authorization is not None and authorization.approval_request is not None:
+        return AuthorizedRunReview(authorization=authorization, review=None)
+
+    authorization = authorize_run_artifact_creation(
+        database_path=database_path,
+        layout=layout,
+        run=run,
         actor_type=actor_type,
         actor_id=actor_id,
         approver_id=approver_id,

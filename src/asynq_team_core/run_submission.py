@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from asynq_team_core.artifact_policy import authorize_run_artifact_creation
 from asynq_team_core.artifacts import ArtifactWrite, write_run_result
 from asynq_team_core.comments import (
     CommentCreation,
@@ -121,8 +122,20 @@ def submit_authorized_run_for_review(
     approver_id: str = "founder",
     clock: Clock = utc_now,
 ) -> AuthorizedRunSubmission:
-    """Submit a run after enforcing agent comment.create capability."""
+    """Submit a run after enforcing agent artifact and comment capabilities."""
     run, task = _load_submittable_run(database_path, run_id)
+    authorization = authorize_run_artifact_creation(
+        database_path=database_path,
+        layout=layout,
+        run=run,
+        actor_type=actor_type,
+        actor_id=actor_id,
+        approver_id=approver_id,
+        clock=clock,
+    )
+    if authorization is not None and authorization.approval_request is not None:
+        return AuthorizedRunSubmission(authorization=authorization, submission=None)
+
     authorization = authorize_task_comment_creation(
         database_path=database_path,
         layout=layout,

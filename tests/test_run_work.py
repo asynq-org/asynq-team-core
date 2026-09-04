@@ -1,13 +1,15 @@
 from pathlib import Path
 
 import pytest
+import yaml
 
-from asynq_team_core.database import initialize_database
+from asynq_team_core.approvals import list_approvals
+from asynq_team_core.database import connect_database, initialize_database
 from asynq_team_core.paths import ProjectLayout, create_project_directories, get_project_layout
 from asynq_team_core.project_files import seed_default_project_files
 from asynq_team_core.run_service import create_run_with_artifact_dir
-from asynq_team_core.run_work import prepare_run_work_packet
-from asynq_team_core.runs import RunStatus
+from asynq_team_core.run_work import prepare_authorized_run_work_packet, prepare_run_work_packet
+from asynq_team_core.runs import RunStatus, get_run
 from asynq_team_core.task_service import create_task_with_brief
 
 
@@ -91,6 +93,67 @@ def test_prepare_run_work_packet_rejects_rule_paths_outside_rules_dir(tmp_path: 
         )
 
 
+def test_prepare_authorized_run_work_packet_allows_default_engineer(tmp_path: Path) -> None:
+    layout, run_id = _create_workspace_run(tmp_path)
+
+    result = prepare_authorized_run_work_packet(
+        database_path=layout.database_path,
+        layout=layout,
+        run_id=run_id,
+        actor_type="agent",
+        actor_id="george",
+    )
+
+    assert result.authorization is not None
+    assert result.authorization.approval_request is None
+    assert result.packet is not None
+    assert result.packet.run.status is RunStatus.WORKING
+
+
+def test_prepare_authorized_run_work_packet_requests_artifact_approval_when_gated(
+    tmp_path: Path,
+) -> None:
+    layout, run_id = _create_workspace_run(tmp_path)
+    _replace_role_artifact_create_policy(layout, "engineer", "require_approval")
+
+    result = prepare_authorized_run_work_packet(
+        database_path=layout.database_path,
+        layout=layout,
+        run_id=run_id,
+        actor_type="agent",
+        actor_id="george",
+    )
+
+    with connect_database(layout.database_path) as connection:
+        stored_run = get_run(connection, run_id)
+        approvals = list_approvals(connection)
+
+    assert result.authorization is not None
+    assert result.authorization.evaluation.capability == "artifact.create"
+    assert result.authorization.approval_request is not None
+    assert result.packet is None
+    assert stored_run is not None
+    assert stored_run.status is RunStatus.CREATED
+    assert approvals == [result.authorization.approval_request.approval]
+    assert not (layout.runs_dir / "george" / run_id / "work.md").exists()
+
+
+def test_prepare_authorized_run_work_packet_rejects_denied_artifact_capability(
+    tmp_path: Path,
+) -> None:
+    layout, run_id = _create_workspace_run(tmp_path)
+    _replace_role_artifact_create_policy(layout, "engineer", "deny")
+
+    with pytest.raises(PermissionError, match="denied for role"):
+        prepare_authorized_run_work_packet(
+            database_path=layout.database_path,
+            layout=layout,
+            run_id=run_id,
+            actor_type="agent",
+            actor_id="george",
+        )
+
+
 def _create_workspace_run(tmp_path: Path) -> tuple[ProjectLayout, str]:
     layout = get_project_layout(tmp_path)
     create_project_directories(layout)
@@ -114,3 +177,13 @@ def _create_workspace_run(tmp_path: Path) -> tuple[ProjectLayout, str]:
     ).run
 
     return layout, run.id
+
+
+def _replace_role_artifact_create_policy(layout: ProjectLayout, role: str, target: str) -> None:
+    path = layout.policy_dir / "capabilities.yaml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    role_policy = data["roles"][role]
+    for field in ("allow", "require_approval", "deny"):
+        role_policy[field] = [item for item in role_policy.get(field, []) if item != "artifact.create"]
+    role_policy.setdefault(target, []).append("artifact.create")
+    path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")

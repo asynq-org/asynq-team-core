@@ -92,6 +92,7 @@ roles:
       - audit.read
       - review.create
       - comment.create
+      - artifact.create
       - task.create
       - approval.request
     require_approval:
@@ -211,6 +212,7 @@ capabilities:
   - repo.read
   - audit.read
   - review.create
+  - artifact.create
   - task.create
   - approval.request
 approvals:

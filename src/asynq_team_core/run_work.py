@@ -6,10 +6,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from asynq_team_core.artifact_policy import authorize_run_artifact_creation
 from asynq_team_core.artifacts import ArtifactWrite, write_run_work_packet
 from asynq_team_core.database import connect_database
 from asynq_team_core.events import Clock, utc_now
 from asynq_team_core.paths import ProjectLayout
+from asynq_team_core.policy import CapabilityAuthorization
 from asynq_team_core.runs import Run, RunStatus, get_run, update_run_status
 from asynq_team_core.tasks import Task, get_task
 
@@ -44,6 +46,14 @@ class RunWorkPacket:
     rules: tuple[TextDocument, ...]
 
 
+@dataclass(frozen=True)
+class AuthorizedRunWorkPacket:
+    """Result of an authorized run work packet preparation attempt."""
+
+    authorization: CapabilityAuthorization | None
+    packet: RunWorkPacket | None
+
+
 def prepare_run_work_packet(
     database_path: Path,
     layout: ProjectLayout,
@@ -54,19 +64,7 @@ def prepare_run_work_packet(
     clock: Clock = utc_now,
 ) -> RunWorkPacket:
     """Prepare a reviewable work packet artifact for a run."""
-    with connect_database(database_path) as connection:
-        run = get_run(connection, run_id)
-        if run is None:
-            raise ValueError(f"Run not found: {run_id}")
-        if run.artifact_dir_path is None:
-            raise ValueError(f"Run has no artifact directory: {run.id}")
-        if run.status not in WORK_STARTABLE_STATUSES:
-            raise ValueError(f"Run cannot be worked from status: {run.status.value}")
-
-        task = get_task(connection, run.task_id)
-        if task is None:
-            raise ValueError(f"Task not found for run {run.id}: {run.task_id}")
-
+    run, task = _load_startable_run(database_path, run_id)
     brief = _read_optional_workspace_file(layout, task.brief_artifact_path)
     agent_manifest = _read_agent_manifest(layout, run.agent_id)
     rule_refs = _extract_rule_refs(agent_manifest.body if agent_manifest else "")
@@ -97,6 +95,60 @@ def prepare_run_work_packet(
         agent_manifest=agent_manifest,
         rules=rules,
     )
+
+
+def prepare_authorized_run_work_packet(
+    database_path: Path,
+    layout: ProjectLayout,
+    run_id: str,
+    actor_type: str,
+    actor_id: str,
+    overwrite: bool = False,
+    approver_id: str = "founder",
+    clock: Clock = utc_now,
+) -> AuthorizedRunWorkPacket:
+    """Prepare a run work packet after enforcing agent artifact.create capability."""
+    run, _task = _load_startable_run(database_path, run_id)
+    authorization = authorize_run_artifact_creation(
+        database_path=database_path,
+        layout=layout,
+        run=run,
+        actor_type=actor_type,
+        actor_id=actor_id,
+        approver_id=approver_id,
+        clock=clock,
+    )
+    if authorization is not None and authorization.approval_request is not None:
+        return AuthorizedRunWorkPacket(authorization=authorization, packet=None)
+
+    packet = prepare_run_work_packet(
+        database_path=database_path,
+        layout=layout,
+        run_id=run.id,
+        actor_type=actor_type,
+        actor_id=actor_id,
+        overwrite=overwrite,
+        clock=clock,
+    )
+
+    return AuthorizedRunWorkPacket(authorization=authorization, packet=packet)
+
+
+def _load_startable_run(database_path: Path, run_id: str) -> tuple[Run, Task]:
+    with connect_database(database_path) as connection:
+        run = get_run(connection, run_id)
+        if run is None:
+            raise ValueError(f"Run not found: {run_id}")
+        if run.artifact_dir_path is None:
+            raise ValueError(f"Run has no artifact directory: {run.id}")
+        if run.status not in WORK_STARTABLE_STATUSES:
+            raise ValueError(f"Run cannot be worked from status: {run.status.value}")
+
+        task = get_task(connection, run.task_id)
+        if task is None:
+            raise ValueError(f"Task not found for run {run.id}: {run.task_id}")
+
+    return run, task
 
 
 def _read_optional_workspace_file(
