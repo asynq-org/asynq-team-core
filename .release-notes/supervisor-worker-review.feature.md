@@ -1,0 +1,1 @@
+- Added supervisor worker auto-review of submitted runs through configured runner adapters.

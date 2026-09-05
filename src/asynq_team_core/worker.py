@@ -3,23 +3,37 @@
 from __future__ import annotations
 
 import shlex
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from asynq_team_core.agent_manifests import (
     AgentManifest,
     list_agent_manifests,
     load_agent_manifest,
+    resolve_agent_runner_selection,
 )
 from asynq_team_core.database import connect_database
 from asynq_team_core.events import Clock, utc_now
+from asynq_team_core.inbox import (
+    InboxItem,
+    InboxItemStatus,
+    InboxItemType,
+    complete_inbox_item,
+)
 from asynq_team_core.paths import ProjectLayout
 from asynq_team_core.policy import CapabilityAuthorization
+from asynq_team_core.run_review import (
+    RunReview,
+    get_next_reviewable_run,
+    parse_run_review_output,
+    prepare_run_review_packet,
+    review_authorized_run,
+)
 from asynq_team_core.run_submission import RunSubmission, submit_authorized_run_for_review
 from asynq_team_core.run_task import StartedTaskRun, start_authorized_task_run
 from asynq_team_core.runner_adapter import execute_run_adapter_command
 from asynq_team_core.runner_execution import RunnerExecution
-from asynq_team_core.runs import RunStatus, update_run_status
+from asynq_team_core.runs import Run, RunStatus, update_run_status
 from asynq_team_core.tasks import (
     Task,
     TaskStatus,
@@ -42,6 +56,19 @@ class RoutedTask:
 
 
 @dataclass(frozen=True)
+class WorkerRunReviewResult:
+    """Result of one automated supervisor review."""
+
+    run_review: RunReview | None
+    target_run_id: str
+    target_task: Task
+    review_packet_path: str
+    execution: RunnerExecution | None
+    authorization: CapabilityAuthorization | None
+    completed_inbox_items: tuple[InboxItem, ...] = ()
+
+
+@dataclass(frozen=True)
 class WorkerRunOnceResult:
     """Result of one local worker scheduling pass."""
 
@@ -51,7 +78,7 @@ class WorkerRunOnceResult:
     routed: RoutedTask | None = None
     execution: RunnerExecution | None = None
     submission: RunSubmission | None = None
-
+    review: WorkerRunReviewResult | None = None
 
 @dataclass(frozen=True)
 class _RunnerWorkerResult:
@@ -89,6 +116,26 @@ def run_worker_once(
                 started=None,
                 routed=routed,
             )
+
+    review_result = review_next_run_for_agent(
+        database_path=database_path,
+        layout=layout,
+        agent_id=agent_id,
+        actor_type=actor_type,
+        actor_id=effective_actor_id,
+        approver_id=approver_id,
+        requested_model=requested_model,
+        execute_runner=execute_runner,
+        runner_timeout_seconds=runner_timeout_seconds,
+        clock=clock,
+    )
+    if review_result is not None:
+        return WorkerRunOnceResult(
+            task=review_result.target_task,
+            authorization=review_result.authorization,
+            started=None,
+            review=review_result,
+        )
 
     with connect_database(database_path) as connection:
         task = get_next_agent_task(connection, agent_id)
@@ -144,6 +191,163 @@ def run_worker_once(
         execution=runner_result.execution,
         submission=runner_result.submission,
     )
+
+
+def review_next_run_for_agent(
+    database_path: Path,
+    layout: ProjectLayout,
+    agent_id: str,
+    actor_type: str = "agent",
+    actor_id: str | None = None,
+    approver_id: str = "founder",
+    requested_model: str | None = None,
+    execute_runner: bool = False,
+    runner_timeout_seconds: int = 300,
+    clock: Clock = utc_now,
+) -> WorkerRunReviewResult | None:
+    """Review the oldest submitted run assigned to an agent."""
+    if not execute_runner:
+        return None
+
+    target_run = get_next_reviewable_run(
+        database_path=database_path,
+        layout=layout,
+        reviewer_id=agent_id,
+    )
+    if target_run is None:
+        return None
+
+    effective_actor_id = actor_id or agent_id
+    packet = prepare_run_review_packet(
+        database_path=database_path,
+        layout=layout,
+        run_id=target_run.id,
+        overwrite=True,
+    )
+    reviewer_run = _reviewer_runner_context(
+        layout=layout,
+        target_run=packet.run,
+        reviewer_id=agent_id,
+        requested_model=requested_model,
+    )
+    execution = execute_run_adapter_command(
+        database_path=database_path,
+        layout=layout,
+        run=reviewer_run,
+        work_packet_path=packet.artifact.relative_path,
+        actor_type=actor_type,
+        actor_id=effective_actor_id,
+        timeout_seconds=runner_timeout_seconds,
+    )
+    if execution.exit_code != 0:
+        return WorkerRunReviewResult(
+            run_review=None,
+            target_run_id=target_run.id,
+            target_task=packet.task,
+            review_packet_path=packet.artifact.relative_path,
+            execution=execution,
+            authorization=None,
+        )
+
+    parsed = parse_run_review_output(_review_output_from_execution(execution))
+    authorized = review_authorized_run(
+        database_path=database_path,
+        layout=layout,
+        run_id=target_run.id,
+        decision=parsed.decision,
+        body_md=parsed.body_md,
+        actor_type=actor_type,
+        actor_id=effective_actor_id,
+        approver_id=approver_id,
+        clock=clock,
+    )
+    completed_inbox_items = ()
+    if authorized.review is not None:
+        completed_inbox_items = _complete_review_request_inbox_items(
+            database_path=database_path,
+            run_id=target_run.id,
+            reviewer_id=agent_id,
+            actor_type=actor_type,
+            actor_id=effective_actor_id,
+            clock=clock,
+        )
+
+    return WorkerRunReviewResult(
+        run_review=authorized.review,
+        target_run_id=target_run.id,
+        target_task=packet.task,
+        review_packet_path=packet.artifact.relative_path,
+        execution=execution,
+        authorization=authorized.authorization,
+        completed_inbox_items=completed_inbox_items,
+    )
+
+
+def _reviewer_runner_context(
+    layout: ProjectLayout,
+    target_run: Run,
+    reviewer_id: str,
+    requested_model: str | None,
+) -> Run:
+    selection = resolve_agent_runner_selection(
+        layout=layout,
+        agent_id=reviewer_id,
+        requested_model=requested_model,
+    )
+    return replace(
+        target_run,
+        agent_id=reviewer_id,
+        runner_id=selection.runner,
+        model=selection.model,
+        requested_model=selection.requested_model,
+    )
+
+
+def _review_output_from_execution(execution: RunnerExecution) -> str:
+    output = execution.stdout.strip() or execution.stderr.strip()
+    if output:
+        return output
+    return "Supervisor runner completed successfully without review output."
+
+
+def _complete_review_request_inbox_items(
+    database_path: Path,
+    run_id: str,
+    reviewer_id: str,
+    actor_type: str,
+    actor_id: str,
+    clock: Clock,
+) -> tuple[InboxItem, ...]:
+    with connect_database(database_path) as connection:
+        rows = connection.execute(
+            """
+            select agent_inbox.id from agent_inbox
+            join comments on comments.id = agent_inbox.source_id
+            where agent_inbox.recipient_id = ?
+            and agent_inbox.item_type = ?
+            and agent_inbox.status = ?
+            and agent_inbox.source_type = ?
+            and comments.body like ?
+            order by agent_inbox.created_at asc, agent_inbox.id asc
+            """,
+            (
+                reviewer_id,
+                InboxItemType.MENTION.value,
+                InboxItemStatus.OPEN.value,
+                "comment",
+                f"%Please review {run_id}%",
+            ),
+        ).fetchall()
+        return tuple(
+            complete_inbox_item(
+                connection,
+                item_id=row["id"],
+                actor_type=actor_type,
+                actor_id=actor_id,
+                clock=clock,
+            )
+            for row in rows
+        )
 
 
 def _execute_runner_if_requested(

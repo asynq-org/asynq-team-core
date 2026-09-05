@@ -5,6 +5,7 @@ import yaml
 
 from asynq_team_core.approvals import list_approvals
 from asynq_team_core.database import connect_database, initialize_database
+from asynq_team_core.inbox import InboxItemStatus, list_inbox_items
 from asynq_team_core.paths import create_project_directories, get_project_layout
 from asynq_team_core.project_files import seed_default_project_files
 from asynq_team_core.runs import RunStatus, get_run, list_runs
@@ -166,6 +167,82 @@ def test_run_worker_once_blocks_task_when_runner_fails(tmp_path: Path) -> None:
     assert stored_run.status is RunStatus.FAILED
     assert stored_task is not None
     assert stored_task.status is TaskStatus.BLOCKED
+
+
+def test_run_worker_once_reviews_submitted_run_for_supervisor(tmp_path: Path) -> None:
+    layout = _create_workspace_with_task(tmp_path, assignee_id="george")
+    _replace_codex_command_template(
+        layout,
+        [sys.executable, "-c", "print('Decision: approve\\n\\nReview:\\nLooks ready.')"],
+    )
+    started = run_worker_once(
+        database_path=layout.database_path,
+        layout=layout,
+        agent_id="george",
+        execute_runner=True,
+        runner_timeout_seconds=5,
+    )
+
+    result = run_worker_once(
+        database_path=layout.database_path,
+        layout=layout,
+        agent_id="supervisor",
+        execute_runner=True,
+        runner_timeout_seconds=5,
+    )
+
+    with connect_database(layout.database_path) as connection:
+        stored_task = get_task(connection, "TASK-0001")
+        supervisor_inbox = list_inbox_items(
+            connection,
+            recipient_id="supervisor",
+            status=InboxItemStatus.OPEN,
+        )
+
+    assert started.submission is not None
+    assert result.review is not None
+    assert result.review.execution is not None
+    assert result.review.execution.exit_code == 0
+    assert result.review.run_review is not None
+    assert result.review.run_review.run.status is RunStatus.APPROVED
+    assert result.review.review_packet_path == ".team/runs/george/RUN-0001/review-work.md"
+    assert result.review.completed_inbox_items
+    assert stored_task is not None
+    assert stored_task.status is TaskStatus.APPROVED
+    assert supervisor_inbox == []
+
+
+def test_run_worker_once_keeps_review_waiting_when_supervisor_runner_fails(
+    tmp_path: Path,
+) -> None:
+    layout = _create_workspace_with_task(tmp_path, assignee_id="george")
+    _replace_codex_command_template(layout, [sys.executable, "-c", "print('runner ok')"])
+    run_worker_once(
+        database_path=layout.database_path,
+        layout=layout,
+        agent_id="george",
+        execute_runner=True,
+        runner_timeout_seconds=5,
+    )
+    _replace_codex_command_template(layout, [sys.executable, "-c", "raise SystemExit(9)"])
+
+    result = run_worker_once(
+        database_path=layout.database_path,
+        layout=layout,
+        agent_id="supervisor",
+        execute_runner=True,
+        runner_timeout_seconds=5,
+    )
+
+    with connect_database(layout.database_path) as connection:
+        stored_run = get_run(connection, "RUN-0001")
+
+    assert result.review is not None
+    assert result.review.execution is not None
+    assert result.review.execution.exit_code == 9
+    assert result.review.run_review is None
+    assert stored_run is not None
+    assert stored_run.status is RunStatus.WAITING_FOR_REVIEW
 
 
 def _create_workspace(tmp_path: Path):
