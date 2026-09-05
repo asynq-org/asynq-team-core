@@ -1,0 +1,1 @@
+- Added runner adapter command planning and execution from project runner policy.
