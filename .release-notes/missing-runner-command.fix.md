@@ -1,0 +1,1 @@
+- Recorded missing local runner commands as audited command failures instead of raising traceback errors.

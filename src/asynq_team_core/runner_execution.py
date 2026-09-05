@@ -14,6 +14,7 @@ from asynq_team_core.runner_policy import RunnerToolDecision, evaluate_runner_to
 
 MAX_CAPTURED_OUTPUT_CHARS = 20_000
 TIMEOUT_EXIT_CODE = 124
+COMMAND_NOT_FOUND_EXIT_CODE = 127
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,10 @@ def execute_run_command(
         exit_code = completed.returncode
         stdout = _truncate_output(completed.stdout)
         stderr = _truncate_output(completed.stderr)
+    except FileNotFoundError as exc:
+        exit_code = COMMAND_NOT_FOUND_EXIT_CODE
+        stdout = ""
+        stderr = _truncate_output(str(exc))
     except subprocess.TimeoutExpired as exc:
         timed_out = True
         exit_code = TIMEOUT_EXIT_CODE

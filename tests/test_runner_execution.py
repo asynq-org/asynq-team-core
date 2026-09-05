@@ -8,7 +8,11 @@ from asynq_team_core.database import connect_database, initialize_database
 from asynq_team_core.paths import ProjectLayout, create_project_directories, get_project_layout
 from asynq_team_core.project_files import seed_default_project_files
 from asynq_team_core.run_service import create_run_with_artifact_dir
-from asynq_team_core.runner_execution import TIMEOUT_EXIT_CODE, execute_run_command
+from asynq_team_core.runner_execution import (
+    COMMAND_NOT_FOUND_EXIT_CODE,
+    TIMEOUT_EXIT_CODE,
+    execute_run_command,
+)
 from asynq_team_core.task_service import create_task_with_brief
 
 
@@ -92,6 +96,26 @@ def test_execute_run_command_records_timeout(tmp_path: Path) -> None:
     assert result.exit_code == TIMEOUT_EXIT_CODE
     assert result.timed_out is True
     assert result.record.event.payload["exit_code"] == TIMEOUT_EXIT_CODE
+
+
+def test_execute_run_command_records_missing_command(tmp_path: Path) -> None:
+    layout, run_id = _create_workspace_run(tmp_path)
+
+    result = execute_run_command(
+        database_path=layout.database_path,
+        layout=layout,
+        run_id=run_id,
+        tool="shell.test",
+        command=("asynq-team-missing-runner-command",),
+        timeout_seconds=1,
+        actor_type="agent",
+        actor_id="george",
+    )
+
+    assert result.exit_code == COMMAND_NOT_FOUND_EXIT_CODE
+    assert result.stdout == ""
+    assert "asynq-team-missing-runner-command" in result.stderr
+    assert result.record.event.payload["exit_code"] == COMMAND_NOT_FOUND_EXIT_CODE
 
 
 def _create_workspace_run(tmp_path: Path) -> tuple[ProjectLayout, str]:
