@@ -12,9 +12,11 @@ from asynq_team_core.tasks import (
     TaskStatus,
     create_task,
     get_next_agent_task,
+    get_next_unassigned_task,
     get_task,
     list_follow_up_tasks,
     list_tasks,
+    update_task_assignee,
     update_task_status,
 )
 
@@ -110,7 +112,53 @@ def test_list_tasks_filters_by_status(tmp_path: Path) -> None:
     assert tasks == [task]
 
 
-def test_get_next_agent_task_returns_oldest_unassigned_task(tmp_path: Path) -> None:
+def test_get_next_agent_task_returns_oldest_assigned_task(tmp_path: Path) -> None:
+    database_path = tmp_path / "team.db"
+    initialize_database(database_path)
+
+    with connect_database(database_path) as connection:
+        create_task(
+            connection,
+            title="Unassigned task",
+            actor_type="human",
+            actor_id="founder",
+        )
+        assigned = create_task(
+            connection,
+            title="Assigned task",
+            actor_type="human",
+            actor_id="founder",
+            assignee_id="george",
+        )
+        next_task = get_next_agent_task(connection, "george")
+
+    assert next_task == assigned
+
+
+def test_get_next_agent_task_ignores_unassigned_and_other_agent_tasks(tmp_path: Path) -> None:
+    database_path = tmp_path / "team.db"
+    initialize_database(database_path)
+
+    with connect_database(database_path) as connection:
+        create_task(
+            connection,
+            title="Unassigned task",
+            actor_type="human",
+            actor_id="founder",
+        )
+        create_task(
+            connection,
+            title="Other agent task",
+            actor_type="human",
+            actor_id="founder",
+            assignee_id="ea",
+        )
+        next_task = get_next_agent_task(connection, "george")
+
+    assert next_task is None
+
+
+def test_get_next_unassigned_task_returns_oldest_unassigned_task(tmp_path: Path) -> None:
     database_path = tmp_path / "team.db"
     initialize_database(database_path)
 
@@ -123,38 +171,14 @@ def test_get_next_agent_task_returns_oldest_unassigned_task(tmp_path: Path) -> N
         )
         create_task(
             connection,
-            title="Other agent task",
-            actor_type="human",
-            actor_id="founder",
-            assignee_id="ea",
-        )
-        next_task = get_next_agent_task(connection, "george")
-
-    assert next_task == first
-
-
-def test_get_next_agent_task_prefers_matching_assignee_over_other_agents(tmp_path: Path) -> None:
-    database_path = tmp_path / "team.db"
-    initialize_database(database_path)
-
-    with connect_database(database_path) as connection:
-        create_task(
-            connection,
-            title="Other agent task",
-            actor_type="human",
-            actor_id="founder",
-            assignee_id="ea",
-        )
-        assigned = create_task(
-            connection,
             title="Assigned task",
             actor_type="human",
             actor_id="founder",
             assignee_id="george",
         )
-        next_task = get_next_agent_task(connection, "george")
+        next_task = get_next_unassigned_task(connection)
 
-    assert next_task == assigned
+    assert next_task == first
 
 
 def test_update_task_status_persists_status_and_event(tmp_path: Path) -> None:
@@ -228,6 +252,64 @@ def test_update_task_status_rejects_missing_task(tmp_path: Path) -> None:
             actor_type="agent",
             actor_id="george",
         )
+
+
+def test_update_task_assignee_persists_assignee_and_event(tmp_path: Path) -> None:
+    database_path = tmp_path / "team.db"
+    initialize_database(database_path)
+
+    with connect_database(database_path) as connection:
+        task = create_task(
+            connection,
+            title="First task",
+            actor_type="human",
+            actor_id="founder",
+        )
+        updated = update_task_assignee(
+            connection,
+            task_id=task.id,
+            assignee_id="george",
+            actor_type="agent",
+            actor_id="ea",
+        )
+        event = connection.execute(
+            "select * from events where type = ? and entity_id = ?",
+            ("task.assignee_changed", task.id),
+        ).fetchone()
+
+    assert updated.assignee_id == "george"
+    assert event is not None
+    assert event["actor_id"] == "ea"
+
+
+def test_update_task_assignee_returns_existing_task_when_assignee_is_unchanged(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "team.db"
+    initialize_database(database_path)
+
+    with connect_database(database_path) as connection:
+        task = create_task(
+            connection,
+            title="First task",
+            actor_type="human",
+            actor_id="founder",
+            assignee_id="george",
+        )
+        updated = update_task_assignee(
+            connection,
+            task_id=task.id,
+            assignee_id="george",
+            actor_type="agent",
+            actor_id="ea",
+        )
+        events = connection.execute(
+            "select * from events where type = ?",
+            ("task.assignee_changed",),
+        ).fetchall()
+
+    assert updated == task
+    assert events == []
 
 
 def test_create_task_rejects_empty_title(tmp_path: Path) -> None:

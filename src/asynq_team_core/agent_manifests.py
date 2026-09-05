@@ -66,6 +66,15 @@ def load_agent_manifest(layout: ProjectLayout, agent_id: str) -> AgentManifest:
     )
 
 
+def list_agent_manifests(layout: ProjectLayout) -> tuple[AgentManifest, ...]:
+    """Load all project-local agent manifests ordered by agent id."""
+    manifests = []
+    for path in sorted(layout.agents_dir.glob("*.yaml")):
+        _ensure_child_path(layout.agents_dir, path)
+        manifests.append(load_agent_manifest(layout, path.stem))
+    return tuple(manifests)
+
+
 def resolve_agent_runner_selection(
     layout: ProjectLayout,
     agent_id: str,

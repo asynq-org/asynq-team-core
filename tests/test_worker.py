@@ -9,11 +9,11 @@ from asynq_team_core.project_files import seed_default_project_files
 from asynq_team_core.runs import RunStatus, list_runs
 from asynq_team_core.task_service import create_task_with_brief
 from asynq_team_core.tasks import TaskStatus, get_task
-from asynq_team_core.worker import run_worker_once
+from asynq_team_core.worker import route_next_unassigned_task, run_worker_once
 
 
 def test_run_worker_once_starts_next_task_run(tmp_path: Path) -> None:
-    layout = _create_workspace_with_task(tmp_path)
+    layout = _create_workspace_with_task(tmp_path, assignee_id="george")
 
     result = run_worker_once(
         database_path=layout.database_path,
@@ -51,8 +51,51 @@ def test_run_worker_once_returns_empty_when_no_task_is_available(tmp_path: Path)
     assert result.started is None
 
 
-def test_run_worker_once_returns_approval_without_starting_run(tmp_path: Path) -> None:
+def test_run_worker_once_routes_unassigned_task_for_ea(tmp_path: Path) -> None:
     layout = _create_workspace_with_task(tmp_path)
+
+    result = run_worker_once(
+        database_path=layout.database_path,
+        layout=layout,
+        agent_id="ea",
+    )
+
+    with connect_database(layout.database_path) as connection:
+        stored_task = get_task(connection, "TASK-0001")
+        runs = list_runs(connection)
+
+    assert result.routed is not None
+    assert result.routed.assignee_id == "george"
+    assert result.started is None
+    assert stored_task is not None
+    assert stored_task.assignee_id == "george"
+    assert stored_task.status is TaskStatus.CREATED
+    assert runs == []
+
+
+def test_route_next_unassigned_task_routes_review_tasks_to_supervisor(tmp_path: Path) -> None:
+    layout = _create_workspace(tmp_path)
+    create_task_with_brief(
+        database_path=layout.database_path,
+        layout=layout,
+        title="Review implementation risk",
+        brief_md="Review the current diff.",
+        actor_type="human",
+        actor_id="founder",
+    )
+
+    routed = route_next_unassigned_task(
+        database_path=layout.database_path,
+        layout=layout,
+    )
+
+    assert routed is not None
+    assert routed.assignee_id == "supervisor"
+    assert "supervisor" in routed.reason
+
+
+def test_run_worker_once_returns_approval_without_starting_run(tmp_path: Path) -> None:
+    layout = _create_workspace_with_task(tmp_path, assignee_id="george")
     _replace_engineer_artifact_create_policy(layout, "require_approval")
 
     result = run_worker_once(
@@ -84,7 +127,7 @@ def _create_workspace(tmp_path: Path):
     return layout
 
 
-def _create_workspace_with_task(tmp_path: Path):
+def _create_workspace_with_task(tmp_path: Path, assignee_id: str | None = None):
     layout = _create_workspace(tmp_path)
     create_task_with_brief(
         database_path=layout.database_path,
@@ -93,6 +136,7 @@ def _create_workspace_with_task(tmp_path: Path):
         brief_md="Build the first task.",
         actor_type="human",
         actor_id="founder",
+        assignee_id=assignee_id,
     )
     return layout
 

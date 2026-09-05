@@ -157,17 +157,35 @@ def list_tasks(
 
 
 def get_next_agent_task(connection: DatabaseConnection, agent_id: str) -> Task | None:
-    """Return the oldest created task assigned to an agent or left unassigned."""
+    """Return the oldest created task assigned to an agent."""
     clean_agent_id = _require_non_empty(agent_id, "agent_id")
     row = connection.execute(
         """
         select * from tasks
         where status = ?
-        and (assignee_id is null or assignee_id = ?)
+        and assignee_id = ?
         order by created_at asc, id asc
         limit 1
         """,
         (TaskStatus.CREATED.value, clean_agent_id),
+    ).fetchone()
+
+    if row is None:
+        return None
+    return _task_from_row(row)
+
+
+def get_next_unassigned_task(connection: DatabaseConnection) -> Task | None:
+    """Return the oldest created task without an assignee."""
+    row = connection.execute(
+        """
+        select * from tasks
+        where status = ?
+        and assignee_id is null
+        order by created_at asc, id asc
+        limit 1
+        """,
+        (TaskStatus.CREATED.value,),
     ).fetchone()
 
     if row is None:
@@ -239,6 +257,49 @@ def update_task_status(
     return updated
 
 
+def update_task_assignee(
+    connection: DatabaseConnection,
+    task_id: str,
+    assignee_id: str | None,
+    actor_type: str,
+    actor_id: str,
+    clock: Clock = utc_now,
+) -> Task:
+    """Update a task assignee and record an audit event."""
+    task = get_task(connection, task_id)
+    if task is None:
+        raise ValueError(f"Task not found: {task_id}")
+    clean_assignee_id = _clean_optional(assignee_id, "assignee_id")
+    if task.assignee_id == clean_assignee_id:
+        return task
+
+    updated_at = format_event_time(clock())
+    connection.execute(
+        "update tasks set assignee_id = ?, updated_at = ? where id = ?",
+        (clean_assignee_id, updated_at, task.id),
+    )
+    insert_event(
+        connection,
+        create_event(
+            event_type="task.assignee_changed",
+            entity_type="task",
+            entity_id=task.id,
+            actor_type=actor_type,
+            actor_id=actor_id,
+            payload={
+                "previous_assignee_id": task.assignee_id,
+                "assignee_id": clean_assignee_id,
+            },
+            clock=lambda: _parse_event_time(updated_at),
+        ),
+    )
+
+    updated = get_task(connection, task.id)
+    if updated is None:
+        raise RuntimeError(f"Task disappeared after assignee update: {task.id}")
+    return updated
+
+
 def _task_from_row(row: DatabaseRow) -> Task:
     return Task(
         id=row["id"],
@@ -257,6 +318,12 @@ def _require_non_empty(value: str, field_name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{field_name} must be a non-empty string.")
     return value.strip()
+
+
+def _clean_optional(value: str | None, field_name: str) -> str | None:
+    if value is None:
+        return None
+    return _require_non_empty(value, field_name)
 
 
 def _parse_event_time(value: str) -> datetime:
