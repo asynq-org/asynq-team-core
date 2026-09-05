@@ -8,7 +8,14 @@ from asynq_team_core.database import connect_database, initialize_database
 from asynq_team_core.inbox import InboxItemType, list_inbox_items
 from asynq_team_core.paths import ProjectLayout, create_project_directories, get_project_layout
 from asynq_team_core.project_files import seed_default_project_files
-from asynq_team_core.run_review import RunReviewDecision, review_authorized_run, review_run
+from asynq_team_core.run_review import (
+    RunReviewDecision,
+    get_next_reviewable_run,
+    parse_run_review_output,
+    prepare_run_review_packet,
+    review_authorized_run,
+    review_run,
+)
 from asynq_team_core.run_service import create_run_with_artifact_dir
 from asynq_team_core.runs import RunStatus, get_run, update_run_status
 from asynq_team_core.task_service import create_task_with_brief
@@ -200,6 +207,52 @@ def test_review_authorized_run_rejects_denied_review_capability(tmp_path: Path) 
             actor_type="agent",
             actor_id="supervisor",
         )
+
+
+def test_get_next_reviewable_run_returns_oldest_supervised_run(tmp_path: Path) -> None:
+    layout, run_id = _create_policy_submitted_run(tmp_path)
+
+    run = get_next_reviewable_run(
+        database_path=layout.database_path,
+        layout=layout,
+        reviewer_id="supervisor",
+    )
+
+    assert run is not None
+    assert run.id == run_id
+
+
+def test_prepare_run_review_packet_writes_supervisor_context(tmp_path: Path) -> None:
+    layout, run_id = _create_policy_submitted_run(tmp_path)
+
+    packet = prepare_run_review_packet(
+        database_path=layout.database_path,
+        layout=layout,
+        run_id=run_id,
+    )
+
+    assert packet.artifact.relative_path == ".team/runs/george/RUN-0001/review-work.md"
+    body = packet.artifact.path.read_text(encoding="utf-8")
+    assert "Decision: approve" in body
+    assert "Decision: return" in body
+    assert "## Submitted Result" in body
+    assert "## Original Work Packet" in body
+
+
+def test_parse_run_review_output_reads_decision_and_review_body() -> None:
+    parsed = parse_run_review_output(
+        "Decision: approve\n\nReview:\nLooks ready.\n"
+    )
+
+    assert parsed.decision is RunReviewDecision.APPROVE
+    assert parsed.body_md == "Looks ready."
+
+
+def test_parse_run_review_output_returns_malformed_output() -> None:
+    parsed = parse_run_review_output("Looks fine but no structured decision.")
+
+    assert parsed.decision is RunReviewDecision.RETURN
+    assert "did not provide a valid" in parsed.body_md
 
 
 def _create_submitted_run(tmp_path: Path) -> tuple[ProjectLayout, str]:
