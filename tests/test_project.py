@@ -110,6 +110,8 @@ def test_ensure_runtime_gitignore_entries_preserves_existing_content(tmp_path: P
     assert body.startswith("dist/\n.team/team.db\n")
     assert body.count(".team/team.db") == 1
     assert ".team/backups/*.db" in body
+    assert ".team/worker/*.pid" in body
+    assert ".team/worker/*.log" in body
 
 
 def test_ensure_runtime_gitignore_entries_is_idempotent(tmp_path: Path) -> None:

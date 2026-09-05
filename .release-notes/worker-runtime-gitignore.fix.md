@@ -1,0 +1,1 @@
+- Ignore local worker PID and log files during workspace initialization.

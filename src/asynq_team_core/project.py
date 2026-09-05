@@ -13,6 +13,8 @@ ConfigWriter = Callable[[Path, TeamConfig], None]
 RUNTIME_GITIGNORE_ENTRIES = (
     ".team/team.db",
     ".team/backups/*.db",
+    ".team/worker/*.pid",
+    ".team/worker/*.log",
 )
 
 
@@ -60,7 +62,7 @@ def initialize_project(
 
 
 def ensure_runtime_gitignore_entries(workspace: Path) -> bool:
-    """Ensure local runtime SQLite files are ignored by the workspace git repo."""
+    """Ensure local runtime files are ignored by the workspace git repo."""
     gitignore_path = workspace / ".gitignore"
     existing_body = gitignore_path.read_text(encoding="utf-8") if gitignore_path.exists() else ""
     existing_lines = set(existing_body.splitlines())
