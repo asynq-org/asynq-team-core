@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 import yaml
@@ -6,7 +7,7 @@ from asynq_team_core.approvals import list_approvals
 from asynq_team_core.database import connect_database, initialize_database
 from asynq_team_core.paths import create_project_directories, get_project_layout
 from asynq_team_core.project_files import seed_default_project_files
-from asynq_team_core.runs import RunStatus, list_runs
+from asynq_team_core.runs import RunStatus, get_run, list_runs
 from asynq_team_core.task_service import create_task_with_brief
 from asynq_team_core.tasks import TaskStatus, get_task
 from asynq_team_core.worker import route_next_unassigned_task, run_worker_once
@@ -119,6 +120,54 @@ def test_run_worker_once_returns_approval_without_starting_run(tmp_path: Path) -
     assert approvals == [result.authorization.approval_request.approval]
 
 
+def test_run_worker_once_can_execute_runner_and_submit_for_review(tmp_path: Path) -> None:
+    layout = _create_workspace_with_task(tmp_path, assignee_id="george")
+    _replace_codex_command_template(layout, [sys.executable, "-c", "print('runner ok')"])
+
+    result = run_worker_once(
+        database_path=layout.database_path,
+        layout=layout,
+        agent_id="george",
+        execute_runner=True,
+        runner_timeout_seconds=5,
+    )
+
+    assert result.execution is not None
+    assert result.execution.exit_code == 0
+    assert result.submission is not None
+    assert result.submission.run.status is RunStatus.WAITING_FOR_REVIEW
+    assert [mention.recipient_id for mention in result.submission.comment.mentions] == [
+        "supervisor"
+    ]
+    assert result.submission.artifact.relative_path == ".team/runs/george/RUN-0001/result.md"
+    assert "runner ok" in result.submission.artifact.path.read_text(encoding="utf-8")
+
+
+def test_run_worker_once_blocks_task_when_runner_fails(tmp_path: Path) -> None:
+    layout = _create_workspace_with_task(tmp_path, assignee_id="george")
+    _replace_codex_command_template(layout, [sys.executable, "-c", "raise SystemExit(7)"])
+
+    result = run_worker_once(
+        database_path=layout.database_path,
+        layout=layout,
+        agent_id="george",
+        execute_runner=True,
+        runner_timeout_seconds=5,
+    )
+
+    with connect_database(layout.database_path) as connection:
+        stored_task = get_task(connection, "TASK-0001")
+        stored_run = get_run(connection, "RUN-0001")
+
+    assert result.execution is not None
+    assert result.execution.exit_code == 7
+    assert result.submission is None
+    assert stored_run is not None
+    assert stored_run.status is RunStatus.FAILED
+    assert stored_task is not None
+    assert stored_task.status is TaskStatus.BLOCKED
+
+
 def _create_workspace(tmp_path: Path):
     layout = get_project_layout(tmp_path)
     create_project_directories(layout)
@@ -148,4 +197,11 @@ def _replace_engineer_artifact_create_policy(layout, target: str) -> None:
     for field in ("allow", "require_approval", "deny"):
         engineer[field] = [item for item in engineer.get(field, []) if item != "artifact.create"]
     engineer.setdefault(target, []).append("artifact.create")
+    path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+
+def _replace_codex_command_template(layout, command_template: list[str]) -> None:
+    path = layout.policy_dir / "runners.yaml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    data["runners"]["codex"]["command_template"] = command_template
     path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")

@@ -2,15 +2,24 @@
 
 from __future__ import annotations
 
+import shlex
 from dataclasses import dataclass
 from pathlib import Path
 
-from asynq_team_core.agent_manifests import AgentManifest, list_agent_manifests
+from asynq_team_core.agent_manifests import (
+    AgentManifest,
+    list_agent_manifests,
+    load_agent_manifest,
+)
 from asynq_team_core.database import connect_database
 from asynq_team_core.events import Clock, utc_now
 from asynq_team_core.paths import ProjectLayout
 from asynq_team_core.policy import CapabilityAuthorization
+from asynq_team_core.run_submission import RunSubmission, submit_authorized_run_for_review
 from asynq_team_core.run_task import StartedTaskRun, start_authorized_task_run
+from asynq_team_core.runner_adapter import execute_run_adapter_command
+from asynq_team_core.runner_execution import RunnerExecution
+from asynq_team_core.runs import RunStatus, update_run_status
 from asynq_team_core.tasks import (
     Task,
     TaskStatus,
@@ -40,6 +49,15 @@ class WorkerRunOnceResult:
     authorization: CapabilityAuthorization | None
     started: StartedTaskRun | None
     routed: RoutedTask | None = None
+    execution: RunnerExecution | None = None
+    submission: RunSubmission | None = None
+
+
+@dataclass(frozen=True)
+class _RunnerWorkerResult:
+    authorization: CapabilityAuthorization | None
+    execution: RunnerExecution | None
+    submission: RunSubmission | None
 
 
 def run_worker_once(
@@ -50,9 +68,11 @@ def run_worker_once(
     actor_id: str | None = None,
     approver_id: str = "founder",
     requested_model: str | None = None,
+    execute_runner: bool = False,
+    runner_timeout_seconds: int = 300,
     clock: Clock = utc_now,
 ) -> WorkerRunOnceResult:
-    """Claim the next task for an agent and prepare its run work packet."""
+    """Claim the next task for an agent and optionally execute its runner."""
     effective_actor_id = actor_id or agent_id
     if agent_id == ROUTER_AGENT_ID:
         routed = route_next_unassigned_task(
@@ -104,11 +124,122 @@ def run_worker_once(
             clock=clock,
         )
 
+    runner_result = _execute_runner_if_requested(
+        database_path=database_path,
+        layout=layout,
+        started=result.started,
+        task=updated_task,
+        actor_type=actor_type,
+        actor_id=effective_actor_id,
+        approver_id=approver_id,
+        runner_timeout_seconds=runner_timeout_seconds,
+        execute_runner=execute_runner,
+        clock=clock,
+    )
+
     return WorkerRunOnceResult(
         task=updated_task,
-        authorization=result.authorization,
+        authorization=runner_result.authorization or result.authorization,
         started=result.started,
+        execution=runner_result.execution,
+        submission=runner_result.submission,
     )
+
+
+def _execute_runner_if_requested(
+    database_path: Path,
+    layout: ProjectLayout,
+    started: StartedTaskRun,
+    task: Task,
+    actor_type: str,
+    actor_id: str,
+    approver_id: str,
+    runner_timeout_seconds: int,
+    execute_runner: bool,
+    clock: Clock,
+) -> _RunnerWorkerResult:
+    if not execute_runner:
+        return _RunnerWorkerResult(authorization=None, execution=None, submission=None)
+
+    execution = execute_run_adapter_command(
+        database_path=database_path,
+        layout=layout,
+        run=started.work_packet.run,
+        work_packet_path=started.work_packet.artifact.relative_path,
+        actor_type=actor_type,
+        actor_id=actor_id,
+        timeout_seconds=runner_timeout_seconds,
+    )
+    if execution.exit_code != 0:
+        with connect_database(database_path) as connection:
+            update_run_status(
+                connection,
+                run_id=started.work_packet.run.id,
+                status=RunStatus.FAILED,
+                actor_type=actor_type,
+                actor_id=actor_id,
+                clock=clock,
+            )
+            update_task_status(
+                connection,
+                task_id=task.id,
+                status=TaskStatus.BLOCKED,
+                actor_type=actor_type,
+                actor_id=actor_id,
+                clock=clock,
+            )
+
+        return _RunnerWorkerResult(
+            authorization=None,
+            execution=execution,
+            submission=None,
+        )
+
+    submitted = submit_authorized_run_for_review(
+        database_path=database_path,
+        layout=layout,
+        run_id=started.work_packet.run.id,
+        summary_md="Runner completed successfully.",
+        checks_md=_render_runner_checks(execution),
+        reviewer_id=_reviewer_id_for_run(layout, started.work_packet.run.agent_id),
+        actor_type=actor_type,
+        actor_id=actor_id,
+        approver_id=approver_id,
+        clock=clock,
+    )
+
+    return _RunnerWorkerResult(
+        authorization=submitted.authorization,
+        execution=execution,
+        submission=submitted.submission,
+    )
+
+
+def _render_runner_checks(execution: RunnerExecution) -> str:
+    sections = [
+        f"- Runner command: `{shlex.join(execution.command)}`",
+        f"- Exit code: {execution.exit_code}",
+        f"- Timed out: {_format_bool(execution.timed_out)}",
+        f"- Duration ms: {execution.duration_ms}",
+    ]
+    if execution.stdout.strip():
+        sections.extend(("", "### Stdout", "```text", execution.stdout.rstrip(), "```"))
+    if execution.stderr.strip():
+        sections.extend(("", "### Stderr", "```text", execution.stderr.rstrip(), "```"))
+
+    return "\n".join(sections)
+
+
+def _reviewer_id_for_run(layout: ProjectLayout, agent_id: str) -> str:
+    try:
+        manifest = load_agent_manifest(layout, agent_id)
+    except ValueError:
+        return "founder"
+    return manifest.supervisor or "founder"
+
+
+def _format_bool(value: bool) -> str:
+    return "yes" if value else "no"
 
 
 def route_next_unassigned_task(
